@@ -52,6 +52,7 @@ class CustomerProfileAdmin(admin.ModelAdmin):
     def user_email(self, obj):
         return obj.user.email
     user_email.short_description = "Email"
+    readonly_fields = ("created_at", "updated_at")
 
 @admin.register(DriverProfile)
 class DriverProfileAdmin(admin.ModelAdmin):
@@ -66,6 +67,7 @@ class DriverProfileAdmin(admin.ModelAdmin):
     def user_email(self, obj):
         return obj.user.email
     user_email.short_description = "Email"
+    readonly_fields = ("created_at", "updated_at")
 
 @admin.register(Address)
 class AddressAdmin(admin.ModelAdmin):
@@ -76,6 +78,7 @@ class AddressAdmin(admin.ModelAdmin):
     list_filter = ("address_type", "is_default")
     search_fields = ("street_address","building_name", "address_notes", "customer_profile__user__username", "customer_profile__user__email")
     list_select_related = ("customer_profile",)
+    readonly_fields = ("created_at", "updated_at")
 
 @admin.register(JugType)
 class JugTypeAdmin(admin.ModelAdmin):
@@ -112,6 +115,7 @@ class JugAdmin(admin.ModelAdmin):
     autocomplete_fields = ("customer_profile", "jug_type")
     list_select_related = ("customer_profile", "jug_type")
     inlines = [RefillScheduleInline]
+    readonly_fields = ("created_at", "updated_at")
 
 
 class OrderItemInline(admin.TabularInline):
@@ -159,6 +163,7 @@ class ServiceOrderAdmin(admin.ModelAdmin):
     list_select_related = ("customer_profile", "driver_profile")
     inlines = [OrderItemInline]
     date_hierarchy = "created_at"
+    readonly_fields = ("created_at", "updated_at")
 
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):

@@ -188,8 +188,6 @@ class RefillSchedule(models.Model):
         PAUSED = "Paused", "Paused"
         DISABLED = "Disabled", "Disabled"
 
-    # If you want ONLY one schedule per jug, use OneToOneField.
-    # If you want multiple historical schedules later, change this to ForeignKey.
     jug = models.OneToOneField(
         Jug,
         on_delete=models.CASCADE,
@@ -218,6 +216,10 @@ class RefillSchedule(models.Model):
 
     def __str__(self):
         return f"Refill schedule for {self.jug}"
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 # ---------------------------------------------------------
