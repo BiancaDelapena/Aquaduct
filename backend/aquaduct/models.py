@@ -1,331 +1,546 @@
-from decimal import Decimal
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
+
 
 class User(AbstractUser):
-    ROLE_CHOICES = (
-        ('ADMIN', 'Admin'),
-        ('DRIVER', 'Driver'),
-        ('CUSTOMER', 'Customer'),
-    )
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES)
+    class Role(models.TextChoices):
+        ADMIN = "Admin", "Admin"
+        DRIVER = "Driver", "Driver"
+        CUSTOMER = "Customer", "Customer"
 
-class CustomerProfile(models.Model):
+    role = models.CharField(max_length=20, choices=Role.choices)
+
+# ---------------------------------------------------------
+class TimeStampedModel(models.Model):
+    """
+    Abstract base model that adds created_at and updated_at fields
+    to every table that needs them.
+    """
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+
+# ---------------------------------------------------------
+# 1. Customer Profile
+# ---------------------------------------------------------
+class CustomerProfile(TimeStampedModel):
+    """
+    Extends the base User account with customer-specific data.
+    One user = one customer profile.
+    """
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="customer_profile"
+    )
+
+    def __str__(self):
+        return f"CustomerProfile: {self.user.email}"
+
+
+# ---------------------------------------------------------
+# 2. Driver Profile
+# ---------------------------------------------------------
+class DriverProfile(TimeStampedModel):
+    """
+    Extends the base User account with driver-specific data.
+    One user = one driver profile.
+    """
+    class Status(models.TextChoices):
+        AVAILABLE = "Available", "Available"
+        BUSY = "Busy", "Busy"
+        INACTIVE = "Inactive", "Inactive"
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="driver_profile"
+    )
+    phone_number = models.CharField(max_length=20, blank=True, null=True)
+    license_no = models.CharField(max_length=100, blank=True, null=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.AVAILABLE
+    )
+
+    def __str__(self):
+        return f"DriverProfile: {self.user.email}"
+
+
+# ---------------------------------------------------------
+# 3. Address
+# ---------------------------------------------------------
+class Address(TimeStampedModel):
 
     class AddressType(models.TextChoices):
-        HOUSE = "HOUSE", "House"
-        BUILDING = "BUILDING", "Building"
+        HOUSE = "House", "House"
+        APARTMENT = "Apartment", "Apartment"
 
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
+    customer_profile = models.ForeignKey(
+        CustomerProfile,
         on_delete=models.CASCADE,
-        related_name="customer_profile",
+        related_name="addresses"
     )
-
-    full_name = models.CharField(max_length=200)
-
     address_type = models.CharField(
-        max_length=10,
-        choices=AddressType.choices,
-        default=AddressType.HOUSE,
+        max_length=20,
+        choices=AddressType.choices
     )
 
-    address = models.TextField()
+    building_name = models.CharField(max_length=100, blank=True, null=True)
+    unit_number = models.CharField(max_length=50, blank=True, null=True)
 
-    building_name = models.CharField(max_length=200, blank=True)
-    unit_number = models.CharField(max_length=50, blank=True)
-    delivery_notes = models.TextField(blank=True)
+    street_address = models.CharField(max_length=255)
 
-    phone_number = models.CharField(max_length=20, blank=True)
+    address_notes = models.TextField(blank=True, null=True)
+    is_default = models.BooleanField(default=False)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    def __str__(self):
+        return f"{self.full_address()} ({self.customer_profile.user.email})"
+
+    def full_address(self):
+        parts = []
+
+        if self.unit_number:
+            parts.append(self.unit_number)
+
+        if self.building_name:
+            parts.append(self.building_name)
+
+        parts.append(self.street_address)
+
+        return ", ".join(parts)
 
     class Meta:
-        ordering = ["full_name"]
+        verbose_name = "Address"
+        verbose_name_plural = "Addresses"
+
+# ---------------------------------------------------------
+# 4. Jug Type
+# ---------------------------------------------------------
+class JugType(models.Model):
+    """
+    Master table for jug types.
+    Example: Round, Slim, 5-gallon, etc.
+    """
+    type_name = models.CharField(max_length=50, unique=True)
+    gallon_capacity = models.DecimalField(max_digits=5, decimal_places=2)
+    purchase_price = models.DecimalField(max_digits=10, decimal_places=2)
+    refill_price = models.DecimalField(max_digits=10, decimal_places=2)
+    description = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.type_name} ({self.gallon_capacity} gal)"
+
+
+
+class Jug(TimeStampedModel):
+    """
+    Represents an actual jug owned by a customer.
+    Important business rule:
+    - A Jug record is created only after a New Jug order is placed.
+    """
+    class Status(models.TextChoices):
+        ACTIVE = "Active", "Active"
+        LOST = "Lost", "Lost"
+        BROKEN = "Broken", "Broken"
+        RETIRED = "Retired", "Retired"
+
+    customer_profile = models.ForeignKey(
+        CustomerProfile,
+        on_delete=models.CASCADE,
+        related_name="jugs"
+    )
+    jug_type = models.ForeignKey(
+        JugType,
+        on_delete=models.PROTECT,
+        related_name="jugs"
+    )
+    jug_label = models.CharField(max_length=50, blank=True, null=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE
+    )
+
+    def __str__(self):
+        label = self.jug_label or f"Jug #{self.pk}"
+        return f"{label} - {self.customer_profile.user.email}"
+
+
+# ---------------------------------------------------------
+# 6. Refill Schedule
+# ---------------------------------------------------------
+class RefillSchedule(models.Model):
+    """
+    Stores refill schedule data for a jug.
+    Business rule:
+    - This should only be valid when jug.status = 'Active'
+    """
+    class Status(models.TextChoices):
+        ACTIVE = "Active", "Active"
+        PAUSED = "Paused", "Paused"
+        DISABLED = "Disabled", "Disabled"
+
+    # If you want ONLY one schedule per jug, use OneToOneField.
+    # If you want multiple historical schedules later, change this to ForeignKey.
+    jug = models.OneToOneField(
+        Jug,
+        on_delete=models.CASCADE,
+        related_name="refill_schedule"
+    )
+    frequency_days = models.PositiveIntegerField(blank=True, null=True)
+    next_refill_date = models.DateField(blank=True, null=True)
+    last_delivery_date = models.DateField(blank=True, null=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE
+    )
 
     def clean(self):
-        if self.address_type == self.AddressType.BUILDING:
-            if not self.building_name or not self.unit_number:
-                raise ValidationError(
-                    "Building name and unit number are required for building addresses."
-                )
+        """
+        Validate business rules that are not simple field checks.
+        """
+        # Refill schedules should only exist for active jugs.
+        if self.jug_id and self.jug.status != Jug.Status.ACTIVE:
+            raise ValidationError("Refill schedules are only valid for Active jugs.")
 
-    def get_full_delivery_address(self):
-        if self.address_type == self.AddressType.HOUSE:
-            return self.address
-        return f"{self.building_name}, Unit {self.unit_number}, {self.address} ({self.delivery_notes})"
-
-    def __str__(self):
-        return self.full_name
-
-class DriverProfile(models.Model):
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="driver_profile",
-    )
-    full_name = models.CharField(max_length=200)
-    phone_number = models.CharField(max_length=20, blank=True)
-    is_available = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["full_name"]
+        # If frequency is set, it should be positive.
+        if self.frequency_days is not None and self.frequency_days <= 0:
+            raise ValidationError("frequency_days must be greater than 0.")
 
     def __str__(self):
-        return self.full_name
+        return f"Refill schedule for {self.jug}"
 
 
-class Jug(models.Model):
+# ---------------------------------------------------------
+# 7. Service Order
+# ---------------------------------------------------------
+class ServiceOrder(TimeStampedModel):
+    """
+    Main order header.
+    One order can contain multiple order items.
+    """
     class Status(models.TextChoices):
-        ACTIVE = "ACTIVE", "Active"
-        PAUSED = "PAUSED", "Paused"
-        LOST = "LOST", "Lost"
-        BROKEN = "BROKEN", "Broken"
-        RETIRED = "RETIRED", "Retired"
+        PENDING = "Pending", "Pending"
+        ASSIGNED = "Assigned", "Assigned"
+        ON_THE_WAY = "On the way", "On the way"
+        DELIVERED = "Delivered", "Delivered"
+        CANCELLED = "Cancelled", "Cancelled"
 
-    customer = models.ForeignKey(
+    customer_profile = models.ForeignKey(
         CustomerProfile,
-        on_delete=models.CASCADE,
-        related_name="jugs",
+        on_delete=models.PROTECT,
+        related_name="service_orders"
     )
-    jug_label = models.CharField(max_length=100)
-    status = models.CharField(
-        max_length=10,
-        choices=Status.choices,
-        default=Status.ACTIVE,
-    )
-    refill_interval_days = models.PositiveIntegerField(null=True, blank=True)
-    frequency_enabled = models.BooleanField(default=False)
-    last_refilled_at = models.DateTimeField(null=True, blank=True)
-    next_refill_due_at = models.DateTimeField(null=True, blank=True)
-    purchased_at = models.DateTimeField(auto_now_add=True)
-    notes = models.TextField(blank=True)
-
-    class Meta:
-        ordering = ["-purchased_at"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["customer", "jug_label"],
-                name="unique_jug_label_per_customer",
-            )
-        ]
-
-    def __str__(self):
-        return f"{self.jug_label} - {self.customer.full_name}"
-
-
-class ServiceOrder(models.Model):
-    class OrderType(models.TextChoices):
-        NEW_JUG = "NEW_JUG", "New Jug"
-        REFILL = "REFILL", "Refill"
-
-    class Status(models.TextChoices):
-        PENDING = "PENDING", "Pending"
-        ASSIGNED = "ASSIGNED", "Assigned"
-        DRIVER_ON_WAY_TO_PICKUP = "PICKUP", "Driver on the way to pick up jug"
-        REFILLING = "REFILLING", "Refilling"
-        ON_THE_WAY = "ON_THE_WAY", "On the way"
-        DELIVERED = "DELIVERED", "Delivered"
-        CANCELLED = "CANCELLED", "Cancelled"
-
-    class PaymentStatus(models.TextChoices):
-        PENDING = "PENDING", "Pending"
-        PAID = "PAID", "Paid"
-        REFUNDED = "REFUNDED", "Refunded"
-
-    customer = models.ForeignKey(
-        CustomerProfile,
-        on_delete=models.CASCADE,
-        related_name="service_orders",
-    )
-    jug = models.ForeignKey(
-        Jug,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="service_orders",
-    )
-
-    order_type = models.CharField(
-        max_length=10,
-        choices=OrderType.choices,
-    )
-    status = models.CharField(
-        max_length=15,
-        choices=Status.choices,
-        default=Status.PENDING,
-    )
-
-    requested_at = models.DateTimeField(auto_now_add=True)
-    pickup_window_start = models.DateTimeField(null=True, blank=True)
-    pickup_window_end = models.DateTimeField(null=True, blank=True)
-
-    assigned_driver = models.ForeignKey(
+    driver_profile = models.ForeignKey(
         DriverProfile,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="assigned_orders",
+        related_name="assigned_orders"
     )
-    assigned_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="orders_assigned_by_me",
-    )
-    assigned_at = models.DateTimeField(null=True, blank=True)
-
-    delivered_at = models.DateTimeField(null=True, blank=True)
-
-    customer_name_snapshot = models.CharField(max_length=200, blank=True)
-    delivery_address_snapshot = models.TextField(blank=True)
-
-    unit_price = models.DecimalField(
-        max_digits=8,
-        decimal_places=2,
-        default=Decimal("0.00"),
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING
     )
     total_amount = models.DecimalField(
-        max_digits=8,
+        max_digits=10,
         decimal_places=2,
-        default=Decimal("0.00"),
+        default=0
     )
-    payment_status = models.CharField(
-        max_length=10,
-        choices=PaymentStatus.choices,
-        default=PaymentStatus.PENDING,
+    delivery_address_snapshot = models.TextField(
+        help_text="Stores the exact address string used when the order was placed."
     )
+    scheduled_pickup_at = models.DateTimeField(blank=True, null=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
 
-    class Meta:
-        ordering = ["-requested_at"]
-        indexes = [
-            models.Index(fields=["status", "requested_at"]),
-            models.Index(fields=["customer", "requested_at"]),
-        ]
-
-    def clean(self):
-        if self.order_type == self.OrderType.REFILL and self.jug_id is None:
-            raise ValidationError({"jug": "Refill orders must be linked to a jug."})
-
-        if self.order_type == self.OrderType.NEW_JUG and self.jug_id is not None:
-            raise ValidationError({"jug": "New jug orders should not use an existing jug."})
+    def recalculate_total(self):
+        """
+        Recompute the total from all base order items.
+        This is useful when items are added/edited/deleted.
+        """
+        total = sum(
+            item.quantity * item.unit_price for item in self.items.all()
+        )
+        self.total_amount = total
+        self.save(update_fields=["total_amount", "updated_at"])
 
     def __str__(self):
-        return f"Order #{self.id} - {self.get_order_type_display()}"
+        return f"Order #{self.pk} - {self.customer_profile.user.email}"
 
 
-class OrderStatusHistory(models.Model):
+# ---------------------------------------------------------
+# 8. Order Item (base table only)
+# ---------------------------------------------------------
+class OrderItem(TimeStampedModel):
+    """
+    Base record for all order line items.
+
+    IMPORTANT:
+    - This model does NOT store item_type anymore.
+    - The subtype table determines the kind of item:
+      - OrderRefillItem -> refill
+      - OrderNewJugItem -> new jug
+    """
     order = models.ForeignKey(
         ServiceOrder,
         on_delete=models.CASCADE,
-        related_name="status_history",
+        related_name="items"
     )
+    quantity = models.PositiveIntegerField()
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def item_kind(self):
+        if hasattr(self, "refill_detail"):
+            return "REFILL"
+        if hasattr(self, "new_jug_detail"):
+            return "NEW_JUG"
+        return "UNKNOWN"
+
+    def clean(self):
+        if hasattr(self, "refill_detail") and hasattr(self, "new_jug_detail"):
+            raise ValidationError("OrderItem cannot be both refill and new jug.")
+    
+    def __str__(self):
+        return f"OrderItem #{self.pk} ({self.item_kind()})"
+
+
+# ---------------------------------------------------------
+# 9. Order Item -> Refill subtype
+# ---------------------------------------------------------
+class OrderRefillItem(models.Model):
+    """
+    Refill-specific details for an order item.
+
+    Relationship:
+    - One OrderItem
+    - One Refill subtype record
+    """
+    order_item = models.OneToOneField(
+        OrderItem,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name="refill_detail"
+    )
+    jug = models.ForeignKey(
+        Jug,
+        on_delete=models.PROTECT,
+        related_name="refill_order_items"
+    )
+
+    def clean(self):
+        """
+        Optional validation for business rules.
+        """
+        if self.jug_id and self.jug.status != Jug.Status.ACTIVE:
+            raise ValidationError("Refill can only be ordered for Active jugs.")
+
+    def __str__(self):
+        return f"Refill for {self.jug}"
+
+
+# ---------------------------------------------------------
+# 10. Order Item -> New Jug subtype
+# ---------------------------------------------------------
+class OrderNewJugItem(models.Model):
+    """
+    New-jug-specific details for an order item.
+
+    Relationship:
+    - One OrderItem
+    - One New Jug subtype record
+
+    generated_jug is filled after the order is processed and the actual
+    Jug record is created.
+    """
+    order_item = models.OneToOneField(
+        OrderItem,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name="new_jug_detail"
+    )
+    jug_type = models.ForeignKey(
+        JugType,
+        on_delete=models.PROTECT,
+        related_name="new_jug_order_items"
+    )
+    generated_jug = models.OneToOneField(
+        Jug,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="source_new_jug_item"
+    )
+
+    def __str__(self):
+        return f"New Jug: {self.jug_type.type_name}"
+
+
+# ---------------------------------------------------------
+# 11. Order Status History
+# ---------------------------------------------------------
+class OrderStatusHistory(models.Model):
+    """
+    Stores every order status change for auditing and tracking.
+    """
+    class Status(models.TextChoices):
+        PENDING = "Pending", "Pending"
+        ASSIGNED = "Assigned", "Assigned"
+        ON_THE_WAY = "On the way", "On the way"
+        DELIVERED = "Delivered", "Delivered"
+        CANCELLED = "Cancelled", "Cancelled"
+
+    order = models.ForeignKey(
+        ServiceOrder,
+        on_delete=models.CASCADE,
+        related_name="status_history"
+    )
+    status = models.CharField(max_length=20, choices=Status.choices)
     changed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="order_status_changes",
+        related_name="status_changes_made"
     )
-    from_status = models.CharField(max_length=20)
-    to_status = models.CharField(max_length=20)
+    remarks = models.TextField(blank=True, null=True)
     changed_at = models.DateTimeField(auto_now_add=True)
-    remarks = models.TextField(blank=True)
-
-    class Meta:
-        ordering = ["-changed_at"]
 
     def __str__(self):
-        return f"Order #{self.order_id}: {self.from_status} -> {self.to_status}"
+        return f"Order #{self.order_id} -> {self.status}"
 
 
-class Notification(models.Model):
-    class NotificationType(models.TextChoices):
-        REMINDER = "REMINDER", "Reminder"
-        DELIVERY_UPDATE = "DELIVERY_UPDATE", "Delivery Update"
-        SYSTEM = "SYSTEM", "System"
-
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="notifications",
-    )
-    type = models.CharField(
-        max_length=20,
-        choices=NotificationType.choices,
-    )
-    title = models.CharField(max_length=255)
-    message = models.TextField()
-
-    related_order = models.ForeignKey(
-        ServiceOrder,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="notifications",
-    )
-    related_jug = models.ForeignKey(
-        Jug,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="notifications",
-    )
-
-    is_read = models.BooleanField(default=False)
-    scheduled_for = models.DateTimeField(null=True, blank=True)
-    sent_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-
-    def __str__(self):
-        return f"{self.get_type_display()} - {self.title}"
-
-
+# ---------------------------------------------------------
+# 12. Payment
+# ---------------------------------------------------------
 class Payment(models.Model):
-    class PaymentFor(models.TextChoices):
-        NEW_JUG = "NEW_JUG", "New Jug"
-        REFILL = "REFILL", "Refill"
-
-    class Status(models.TextChoices):
-        PENDING = "PENDING", "Pending"
-        PAID = "PAID", "Paid"
-        REFUNDED = "REFUNDED", "Refunded"
+    """
+    One order = one payment record.
+    Since order_id is unique, this enforces a 1:1 relationship.
+    """
+    class PaymentStatus(models.TextChoices):
+        PENDING = "Pending", "Pending"
+        PAID = "Paid", "Paid"
+        FAILED = "Failed", "Failed"
+        REFUNDED = "Refunded", "Refunded"
 
     order = models.OneToOneField(
         ServiceOrder,
         on_delete=models.CASCADE,
-        related_name="payment",
+        related_name="payment"
     )
-    amount = models.DecimalField(max_digits=8, decimal_places=2)
-    payment_for = models.CharField(
-        max_length=10,
-        choices=PaymentFor.choices,
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_method = models.CharField(max_length=50)
+    payment_status = models.CharField(
+        max_length=20,
+        choices=PaymentStatus.choices,
+        default=PaymentStatus.PENDING
     )
-    method = models.CharField(max_length=50, blank=True)
-    status = models.CharField(
-        max_length=10,
-        choices=Status.choices,
-        default=Status.PENDING,
-    )
-    paid_at = models.DateTimeField(null=True, blank=True)
-    reference_no = models.CharField(max_length=100, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-
-    def clean(self):
-        if self.amount < 0:
-            raise ValidationError({"amount": "Payment amount cannot be negative."})
+    paid_at = models.DateTimeField(blank=True, null=True)
+    reference_number = models.CharField(max_length=100, blank=True, null=True)
 
     def __str__(self):
-        return f"Payment #{self.id} - {self.get_status_display()}"
+        return f"Payment for Order #{self.order_id}"
+
+
+# ---------------------------------------------------------
+# 13. Notification
+# ---------------------------------------------------------
+class Notification(models.Model):
+    """
+    Stores user notifications.
+    Notifications may be linked to an order, but that link is optional.
+    """
+    class NotificationType(models.TextChoices):
+        ORDER_UPDATE = "Order Update", "Order Update"
+        PAYMENT = "Payment", "Payment"
+        SYSTEM = "System", "System"
+        REMINDER = "Reminder", "Reminder"
+        ASSIGNMENT = "Assignment", "Assignment"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notifications"
+    )
+    order = models.ForeignKey(
+        ServiceOrder,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notifications"
+    )
+    title = models.CharField(max_length=100)
+    message = models.TextField()
+    notification_type = models.CharField(
+        max_length=30,
+        choices=NotificationType.choices
+    )
+    is_read = models.BooleanField(default=False)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Notification to {self.user} - {self.title}"
+
+
+# ---------------------------------------------------------
+# 14. Jug Report
+# ---------------------------------------------------------
+class JugReport(TimeStampedModel):
+    """
+    Used when a customer reports a jug problem.
+    """
+    class ReportType(models.TextChoices):
+        LOST = "Lost", "Lost"
+        BROKEN = "Broken", "Broken"
+        LEAKING = "Leaking", "Leaking"
+        WRONG_JUG = "Wrong Jug", "Wrong Jug"
+        OTHER = "Other", "Other"
+
+    class Status(models.TextChoices):
+        PENDING = "Pending", "Pending"
+        REVIEWED = "Reviewed", "Reviewed"
+        APPROVED = "Approved", "Approved"
+        RESOLVED = "Resolved", "Resolved"
+        REJECTED = "Rejected", "Rejected"
+
+    jug = models.ForeignKey(
+        Jug,
+        on_delete=models.PROTECT,
+        related_name="reports"
+    )
+    customer_profile = models.ForeignKey(
+        CustomerProfile,
+        on_delete=models.PROTECT,
+        related_name="jug_reports"
+    )
+    report_type = models.CharField(
+        max_length=50,
+        choices=ReportType.choices
+    )
+    description = models.TextField(blank=True, null=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING
+    )
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="jug_reports_resolved"
+    )
+    resolved_at = models.DateTimeField(blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.report_type} report for Jug #{self.jug_id}"
