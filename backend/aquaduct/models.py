@@ -3,6 +3,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from django.db import transaction
+
 
 
 class User(AbstractUser):
@@ -11,7 +13,7 @@ class User(AbstractUser):
         DRIVER = "Driver", "Driver"
         CUSTOMER = "Customer", "Customer"
 
-    role = models.CharField(max_length=20, choices=Role.choices)
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.CUSTOMER)
 
 # ---------------------------------------------------------
 class TimeStampedModel(models.Model):
@@ -24,7 +26,6 @@ class TimeStampedModel(models.Model):
 
     class Meta:
         abstract = True
-
 
 # ---------------------------------------------------------
 # 1. Customer Profile
@@ -116,6 +117,15 @@ class Address(TimeStampedModel):
         parts.append(self.street_address)
 
         return ", ".join(parts)
+
+    def save(self, *args, **kwargs):
+        if self.is_default:
+            Address.objects.filter(
+                customer_profile=self.customer_profile,
+                is_default=True
+            ).exclude(pk=self.pk).update(is_default=False)
+
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = "Address"
@@ -265,11 +275,8 @@ class ServiceOrder(TimeStampedModel):
     scheduled_pickup_at = models.DateTimeField(blank=True, null=True)
     completed_at = models.DateTimeField(blank=True, null=True)
 
+    @transaction.atomic
     def recalculate_total(self):
-        """
-        Recompute the total from all base order items.
-        This is useful when items are added/edited/deleted.
-        """
         total = sum(
             item.quantity * item.unit_price for item in self.items.all()
         )
@@ -279,112 +286,88 @@ class ServiceOrder(TimeStampedModel):
     def __str__(self):
         return f"Order #{self.pk} - {self.customer_profile.user.email}"
 
-
 # ---------------------------------------------------------
 # 8. Order Item (base table only)
 # ---------------------------------------------------------
 class OrderItem(TimeStampedModel):
     """
-    Base record for all order line items.
-
-    IMPORTANT:
-    - This model does NOT store item_type anymore.
-    - The subtype table determines the kind of item:
-      - OrderRefillItem -> refill
-      - OrderNewJugItem -> new jug
+    Single unified order item model.
+    Handles both refill and new jug orders.
     """
+
+    class ItemType(models.TextChoices):
+        REFILL = "Refill", "Refill"
+        NEW_JUG = "New Jug", "New Jug"
+
     order = models.ForeignKey(
         ServiceOrder,
         on_delete=models.CASCADE,
         related_name="items"
     )
-    quantity = models.PositiveIntegerField()
-    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
 
-    def item_kind(self):
-        if hasattr(self, "refill_detail"):
-            return "REFILL"
-        if hasattr(self, "new_jug_detail"):
-            return "NEW_JUG"
-        return "UNKNOWN"
-
-    def clean(self):
-        if hasattr(self, "refill_detail") and hasattr(self, "new_jug_detail"):
-            raise ValidationError("OrderItem cannot be both refill and new jug.")
-    
-    def __str__(self):
-        return f"OrderItem #{self.pk} ({self.item_kind()})"
-
-
-# ---------------------------------------------------------
-# 9. Order Item -> Refill subtype
-# ---------------------------------------------------------
-class OrderRefillItem(models.Model):
-    """
-    Refill-specific details for an order item.
-
-    Relationship:
-    - One OrderItem
-    - One Refill subtype record
-    """
-    order_item = models.OneToOneField(
-        OrderItem,
-        on_delete=models.CASCADE,
-        primary_key=True,
-        related_name="refill_detail"
+    item_type = models.CharField(
+        max_length=20,
+        choices=ItemType.choices
     )
+
+    # For refill items
     jug = models.ForeignKey(
         Jug,
         on_delete=models.PROTECT,
-        related_name="refill_order_items"
+        null=True,
+        blank=True,
+        related_name="refill_items"
     )
 
-    def clean(self):
-        """
-        Optional validation for business rules.
-        """
-        if self.jug_id and self.jug.status != Jug.Status.ACTIVE:
-            raise ValidationError("Refill can only be ordered for Active jugs.")
-
-    def __str__(self):
-        return f"Refill for {self.jug}"
-
-
-# ---------------------------------------------------------
-# 10. Order Item -> New Jug subtype
-# ---------------------------------------------------------
-class OrderNewJugItem(models.Model):
-    """
-    New-jug-specific details for an order item.
-
-    Relationship:
-    - One OrderItem
-    - One New Jug subtype record
-
-    generated_jug is filled after the order is processed and the actual
-    Jug record is created.
-    """
-    order_item = models.OneToOneField(
-        OrderItem,
-        on_delete=models.CASCADE,
-        primary_key=True,
-        related_name="new_jug_detail"
-    )
+    # For new jug items
     jug_type = models.ForeignKey(
         JugType,
         on_delete=models.PROTECT,
-        related_name="new_jug_order_items"
+        null=True,
+        blank=True,
+        related_name="new_jug_items"
     )
+
+    # Filled only after payment is confirmed for NEW_JUG items
     generated_jug = models.OneToOneField(
         Jug,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="source_new_jug_item"
+        related_name="source_order_item"
     )
 
+    quantity = models.PositiveIntegerField()
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def clean(self):
+        super().clean()
+
+        if self.item_type not in self.ItemType.values:
+            raise ValidationError({"item_type": "Invalid item type."})
+
+        if self.item_type == self.ItemType.REFILL:
+            if not self.jug:
+                raise ValidationError({"jug": "Refill items must have a jug."})
+            if self.jug_type_id:
+                raise ValidationError({"jug_type": "Refill items cannot have a jug type."})
+            if self.order_id and self.jug.customer_profile_id != self.order.customer_profile_id:
+                raise ValidationError({"jug": "This jug does not belong to the customer."})
+            if self.jug.status != Jug.Status.ACTIVE:
+                raise ValidationError({"jug": "Only active jugs can be refilled."})
+            if self.generated_jug_id:
+                raise ValidationError({"generated_jug": "Refill items cannot generate jugs."})
+
+        elif self.item_type == self.ItemType.NEW_JUG:
+            if not self.jug_type:
+                raise ValidationError({"jug_type": "New Jug items must have a jug type."})
+            if self.jug_id:
+                raise ValidationError({"jug": "New Jug items cannot have an existing jug."})
+            if self.quantity != 1:
+                raise ValidationError({"quantity": "New Jug items must have quantity = 1."})
+
     def __str__(self):
-        return f"New Jug: {self.jug_type.type_name}"
+        return f"{self.item_type} - Order #{self.order_id}"
 
 
 # ---------------------------------------------------------
@@ -440,7 +423,7 @@ class Payment(models.Model):
         on_delete=models.CASCADE,
         related_name="payment"
     )
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
     payment_method = models.CharField(max_length=50)
     payment_status = models.CharField(
         max_length=20,
@@ -450,9 +433,23 @@ class Payment(models.Model):
     paid_at = models.DateTimeField(blank=True, null=True)
     reference_number = models.CharField(max_length=100, blank=True, null=True)
 
+    def clean(self):
+        super().clean()
+        if self.amount <= 0:
+            raise ValidationError({"amount": "Payment amount must be greater than 0."})
+
     def __str__(self):
         return f"Payment for Order #{self.order_id}"
 
+    def save(self, *args, **kwargs):
+        if self.order_id:
+            self.amount = self.order.total_amount
+
+        if self.payment_status == self.PaymentStatus.PAID and self.paid_at is None:
+            self.paid_at = timezone.now()
+
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 # ---------------------------------------------------------
 # 13. Notification

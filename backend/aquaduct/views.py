@@ -1,5 +1,8 @@
 from django.http import JsonResponse
-from .services import create_jug_from_new_order_item
+from django.shortcuts import get_object_or_404
+from django.views.decorators.http import require_POST
+from .models import Payment
+from .services import mark_payment_as_paid
 
 def home(request):
     data = {
@@ -7,9 +10,13 @@ def home(request):
     }
     return JsonResponse(data)
 
-def create_order(request):
-    # create order
-    # create order item
-    # create new jug item
+@require_POST
+def pay_payment(request, payment_id):
+    payment = get_object_or_404(Payment, pk=payment_id)
+    created_jugs = mark_payment_as_paid(payment)
 
-    create_jug_from_new_order_item(order_new_jug_item)
+    return JsonResponse({
+        "message": "Payment marked as paid.",
+        "payment_id": payment.id,
+        "created_jugs": [jug.id for jug in created_jugs],
+    })

@@ -10,8 +10,6 @@ from .models import (
     RefillSchedule,
     ServiceOrder,
     OrderItem,
-    OrderRefillItem,
-    OrderNewJugItem,
     OrderStatusHistory,
     Payment,
     Notification,
@@ -119,11 +117,11 @@ class JugAdmin(admin.ModelAdmin):
 
 
 class OrderItemInline(admin.TabularInline):
-    """
-    Lets you manage order items directly from the ServiceOrder admin.
-    """
     model = OrderItem
     extra = 0
+    fields = ("item_type", "jug", "jug_type", "generated_jug", "quantity", "unit_price")
+    readonly_fields = ("generated_jug",)
+    autocomplete_fields = ("jug", "jug_type")
 
 
 @admin.register(ServiceOrder)
@@ -165,44 +163,18 @@ class ServiceOrderAdmin(admin.ModelAdmin):
     date_hierarchy = "created_at"
     readonly_fields = ("created_at", "updated_at")
 
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        form.instance.recalculate_total()
+
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
-    """
-    Base order item admin.
-    The type is determined by whether the item has a related subtype record.
-    """
-    list_display = ("id", "order", "quantity", "unit_price", "item_kind", "created_at")
-    search_fields = ("order__id",)
-    autocomplete_fields = ("order",)
-    list_select_related = ("order",)
-
-    def item_kind(self, obj):
-        if hasattr(obj, "refill_detail"):
-            return "REFILL"
-        if hasattr(obj, "new_jug_detail"):
-            return "NEW_JUG"
-        return "UNKNOWN"
-    item_kind.short_description = "Item Type"
-
-@admin.register(OrderRefillItem)
-class OrderRefillItemAdmin(admin.ModelAdmin):
-    """
-    Refill subtype admin.
-    """
-    list_display = ("order_item", "jug")
-    search_fields = ("order_item__order__id", "jug__jug_label", "jug__customer_profile__user__email")
-    autocomplete_fields = ("order_item", "jug")
-    list_select_related = ("order_item", "jug")
-
-@admin.register(OrderNewJugItem)
-class OrderNewJugItemAdmin(admin.ModelAdmin):
-    """
-    New-jug subtype admin.
-    """
-    list_display = ("order_item", "jug_type", "generated_jug")
-    search_fields = ("order_item__order__id", "jug_type__type_name", "generated_jug__jug_label")
-    autocomplete_fields = ("order_item", "jug_type", "generated_jug")
-    list_select_related = ("order_item", "jug_type", "generated_jug")
+    list_display = ("id", "order", "item_type", "quantity", "unit_price", "generated_jug", "created_at")
+    search_fields = ("order__id", "generated_jug__jug_label")
+    autocomplete_fields = ("order", "jug", "jug_type")
+    list_filter = ("item_type",)
+    list_select_related = ("order", "jug", "jug_type", "generated_jug")
+    readonly_fields = ("created_at", "generated_jug")
 
 
 @admin.register(OrderStatusHistory)
@@ -215,18 +187,54 @@ class OrderStatusHistoryAdmin(admin.ModelAdmin):
     search_fields = ("order__id", "changed_by__username", "changed_by__email", "remarks")
     autocomplete_fields = ("order", "changed_by")
     list_select_related = ("order", "changed_by")
+    readonly_fields = ("changed_at",)
 
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
     """
-    Payment admin matches your current payment fields.
+    Payment is system-controlled and admin-approved only.
     """
-    list_display = ("id", "order", "amount", "payment_status", "paid_at", "reference_number")
+
+    list_display = (
+        "id",
+        "order",
+        "amount",
+        "payment_status",
+        "paid_at",
+        "reference_number",
+    )
+
     list_filter = ("payment_status", "paid_at")
     search_fields = ("order__id", "reference_number")
     autocomplete_fields = ("order",)
     list_select_related = ("order",)
+
+    # LOCK CRITICAL FIELDS
+    readonly_fields = ("amount", "paid_at")
+
+    def save_model(self, request, obj, form, change):
+        """
+        Enforce system-driven payment amount.
+        """
+        # FORCE correct amount from order (NEVER trust input)
+        if obj.order_id:
+            obj.amount = obj.order.total_amount
+
+        super().save_model(request, obj, form, change)
+
+    def has_add_permission(self, request):
+        """
+        Only admin can create payment records.
+        """
+        return request.user.is_staff
+
+    def has_delete_permission(self, request, obj=None):
+        """
+        Prevent deletion to preserve financial integrity.
+        """
+        return False
+    
 
 
 @admin.register(Notification)
