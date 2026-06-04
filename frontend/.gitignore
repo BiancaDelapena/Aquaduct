@@ -23,6 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 
+# Local env files
+.env
+.env.*
+
 # Python
 __pycache__/
 *.pyc
@@ -35,6 +39,7 @@ venv/
 # Django
 db.sqlite3
 media/
+staticfiles/
 
 # Node
 node_modules/

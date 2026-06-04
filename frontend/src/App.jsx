@@ -1,21 +1,47 @@
-import {use, useEffect, useState} from "react";
+// frontend/src/App.jsx
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/signuppage';
+import CustomerPage from './pages/CustomerPage';
 
-function App() { 
-  const [message, setMessage] = useState('');
+// Simple guard to protect pages based on login status and roles
+function ProtectedRoute({ children, allowedRole }) {
+  const token = localStorage.getItem('access_token');
+  const userRole = localStorage.getItem('user_role');
 
-  useEffect(() => {
-    fetch('http://127.0.0.1:8000/api')
-      .then(response => response.json())
-      .then(data => setMessage(data.message))
-      .catch(error => console.error('Error fetching message:', error));
-  }, []);
+  if (!token) {
+    // Not logged in -> send to login page
+    return <Navigate to="/" replace />;
+  }
 
-  return ( 
-    <div>
-      <h1>Message from backend</h1>
-      <p>{message || 'loading..'}</p>
-    </div>
-  );
+  if (allowedRole && userRole !== allowedRole) {
+    // Logged in but wrong role -> send back to an unauthorized message or fallback
+    return <div className="p-8 text-center text-red-500 font-medium">Unauthorized Access.</div>;
+  }
+
+  return children;
 }
 
-export default App;
+export default function App() {
+  return (
+    <Routes>
+      {/* Public Route */}
+      <Route path="/" element={<LoginPage />} />
+      <Route path="/signup" element={<RegisterPage />} />
+
+      {/* Protected Customer Route */}
+      <Route 
+        path="/dashboard" 
+        element={
+          <ProtectedRoute allowedRole="Customer">
+            <CustomerPage />
+          </ProtectedRoute>
+        } 
+      />
+
+      {/* Placeholder Fallback for safety */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}

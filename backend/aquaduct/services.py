@@ -3,7 +3,6 @@ from django.utils import timezone
 
 from .models import Jug, Payment, OrderItem
 
-
 @transaction.atomic
 def create_jugs_for_paid_order(payment):
     """
