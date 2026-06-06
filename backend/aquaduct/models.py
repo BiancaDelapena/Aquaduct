@@ -11,35 +11,16 @@ from django.utils import timezone
 class User(AbstractUser):
     class Role(models.TextChoices):
         ADMIN = "Admin", "Admin"
-        DRIVER = "Driver", "Driver"
         CUSTOMER = "Customer", "Customer"
-
-    class DriverStatus(models.TextChoices):
-        AVAILABLE = "Available", "Available"
-        BUSY = "Busy", "Busy"
-        INACTIVE = "Inactive", "Inactive"
 
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.CUSTOMER)
     phone_number = models.CharField(max_length=20, blank=True)   # mandatory for customers, enforced in forms/serializers
-
-    # Driver-only
-    license_no = models.CharField(max_length=100, blank=True, null=True)
-    driver_status = models.CharField(
-        max_length=20,
-        choices=DriverStatus.choices,
-        blank=True,
-        null=True
-    )
 
     class Meta:
         db_table = 'users'
 
     def __str__(self):
         return f"{self.email or self.username} ({self.role})"
-
-    @property
-    def is_driver(self):
-        return self.role == self.Role.DRIVER
 
     @property
     def is_customer(self):
@@ -199,10 +180,6 @@ class Order(TimeStampedModel):
         User, on_delete=models.PROTECT, related_name="orders",
         limit_choices_to={'role': User.Role.CUSTOMER}
     )
-    driver = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="deliveries",
-        limit_choices_to={'role': User.Role.DRIVER}
-    )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.CREATED)
     order_source = models.CharField(max_length=20, choices=OrderSource.choices, default=OrderSource.WEB_APP)
     delivery_address_snapshot = models.TextField()
@@ -216,7 +193,6 @@ class Order(TimeStampedModel):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['customer', 'status']),
-            models.Index(fields=['driver', 'status']),
             models.Index(fields=['status', 'created_at']),
         ]
 

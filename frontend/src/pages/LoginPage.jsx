@@ -1,3 +1,4 @@
+//LoginPage.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from '../api';
@@ -49,7 +50,7 @@ const features = [
   },
 ];
 
-const ROLES = ["Customer", "Driver", "Admin"];
+const ROLES = ["Customer", "Admin"];
 
 export default function LoginPage() {
   const [role, setRole] = useState("Customer");
@@ -74,30 +75,32 @@ export default function LoginPage() {
       // 2. Saving variables to localStorage
       localStorage.setItem("access_token", res.data.access);
       localStorage.setItem("refresh_token", res.data.refresh);
-      localStorage.setItem("user_role", res.data.role || role);
 
-      // 3. Phase 1 Role-Based Redirection Middleware Engine
-      const userRole = res.data.role || role;
-      if (userRole === "Customer") {
+      // Determine role from backend response. Some backends use boolean flags for staff.
+      const roleFromResponse =
+        res.data.role || (res.data.is_staff || res.data.is_superuser ? "Admin" : role);
+
+      localStorage.setItem("user_role", roleFromResponse);
+
+      // 3. Role-Based Redirection
+      if (roleFromResponse === "Customer") {
         navigate("/dashboard");
-      } else if (userRole === "Driver") {
-        navigate("/driver-dashboard");
-      } else if (userRole === "Admin") {
+      } else if (roleFromResponse === "Admin") {
         navigate("/admin-dashboard");
       } else {
         setError("Invalid dashboard routing role.");
       }
-      
+
     } catch (err) {
       setError(
-        err.response?.data?.detail || 
+        err.response?.data?.detail ||
         "Invalid username or password."
       );
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-10 via-blue-30 to-indigo-90 flex items-center justify-center p-6">
       <div className="w-full max-w-5xl flex flex-col md:flex-row items-center gap-12">
 
         {/* ── Left Panel ── */}

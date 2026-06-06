@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
+# pyrefly: ignore [missing-import]
 from .models import (
     User, Address, JugType, Jug, RefillSchedule,
     Order, OrderItem, OrderStatusHistory, Payment,
@@ -10,7 +11,7 @@ from .models import (
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     fieldsets = BaseUserAdmin.fieldsets + (
-        ("Role Info", {"fields": ("role", "phone_number", "license_no", "driver_status")}),
+        ("Role Info", {"fields": ("role", "phone_number")}),
     )
     list_display = ("username", "email", "role", "phone_number", "is_staff", "is_active")
     list_filter = ("role", "is_staff", "is_active")
@@ -56,6 +57,12 @@ class JugAdmin(admin.ModelAdmin):
     search_fields = ("unique_id", "jug_label", "owner__email")
     inlines = [RefillScheduleInline]
     readonly_fields = ("created_at", "updated_at")
+    
+@admin.register(RefillSchedule)
+class RefillScheduleAdmin(admin.ModelAdmin):
+    list_display = ['jug', 'frequency_days', 'next_reminder_at', 'status']
+    list_filter = ['status']
+    search_fields = ['jug__unique_id', 'jug__owner__email']
 
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
@@ -71,9 +78,9 @@ class OrderStatusHistoryInline(admin.TabularInline):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ("id", "customer", "driver", "status", "order_source", "total_amount", "created_at")
+    list_display = ("id", "customer", "status", "order_source", "total_amount", "created_at")
     list_filter = ("status", "order_source", "created_at")
-    search_fields = ("id", "customer__email", "driver__email", "delivery_address_snapshot")
+    search_fields = ("id", "customer__email", "delivery_address_snapshot")
     inlines = [OrderItemInline, OrderStatusHistoryInline]
     readonly_fields = ("created_at", "updated_at", "price_snapshot", "delivery_address_snapshot")
 

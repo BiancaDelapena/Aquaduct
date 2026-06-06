@@ -4,6 +4,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/signuppage';
 import CustomerPage from './pages/CustomerPage';
+import { AdminDashboard } from './pages/adminPage';
 
 // Simple guard to protect pages based on login status and roles
 function ProtectedRoute({ children, allowedRole }) {
@@ -31,13 +32,23 @@ export default function App() {
       <Route path="/signup" element={<RegisterPage />} />
 
       {/* Protected Customer Route */}
-      <Route 
-        path="/dashboard" 
+      <Route
+        path="/dashboard"
         element={
           <ProtectedRoute allowedRole="Customer">
             <CustomerPage />
           </ProtectedRoute>
-        } 
+        }
+      />
+
+      {/* Protected Admin Route */}
+      <Route
+        path="/admin-dashboard"
+        element={
+          <ProtectedRoute allowedRole="Admin">
+            <AdminDashboard />
+          </ProtectedRoute>
+        }
       />
 
       {/* Placeholder Fallback for safety */}
