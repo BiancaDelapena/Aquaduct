@@ -5,10 +5,12 @@ import { useNavigate } from 'react-router-dom';
 import Icon, { IC } from '../components/Icon';
 import StatusBadge from '../components/StatusBadge';
 import Modal from '../components/Modal';
-import JugCard from '../components/JugCard';
-import ChatWidget from '../components/ChatWidget';
-import FrequencyEditModal from '../components/FrequencyEditModal';
-import FrequencyConfirmModal from '../components/FrequencyConfirmModal';
+import JugCard from '../components/Jugcard';
+import ChatWidget from '../components/Chatwidget';
+import FrequencyEditModal from '../components/Frequencyeditmodal';
+import AddAddressModal from '../components/AddAddressModal';
+import ConfirmDialog from '../components/ConfirmDialog';
+import EditProfileModal from '../components/EditProfileModal';
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 const INITIAL_JUGS = [
@@ -53,6 +55,17 @@ export default function CustomerPage() {
   const [freqJug, setFreqJug] = useState(null);
   const [pendingFreq, setPendingFreq] = useState('');
 
+  // Address modal states
+  const [showAddAddressModal, setShowAddAddressModal] = useState(false);
+  const [showConfirmAddressModal, setShowConfirmAddressModal] = useState(false);
+  const [pendingAddressData, setPendingAddressData] = useState(null);
+  const [editingAddress, setEditingAddress] = useState(null);
+
+  // Profile edit modal states
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [showConfirmProfileModal, setShowConfirmProfileModal] = useState(false);
+  const [pendingProfileData, setPendingProfileData] = useState(null);
+
   // ── Jug handlers ────────────────────────────────────────────────────────────
   const toggleJugStatus = (id) => {
     setJugs(prev =>
@@ -71,6 +84,40 @@ export default function CustomerPage() {
     setShowFreqConfirm(false);
     setFreqJug(null);
     setPendingFreq('');
+  };
+
+  // ── Address handlers ────────────────────────────────────────────────────────
+  const handleAddAddressContinue = (formData) => {
+    setPendingAddressData(formData);
+    setShowAddAddressModal(false);
+    setShowConfirmAddressModal(true);
+  };
+
+  const handleConfirmAddress = () => {
+    if (pendingAddressData) {
+      console.log('Address added:', pendingAddressData);
+      // In a real app, this would update the profile addresses
+      // For now, just show success and close modals
+      setShowConfirmAddressModal(false);
+      setPendingAddressData(null);
+    }
+  };
+
+  // ── Profile handlers ────────────────────────────────────────────────────────
+  const handleEditProfileContinue = (formData) => {
+    setPendingProfileData(formData);
+    setShowEditProfileModal(false);
+    setShowConfirmProfileModal(true);
+  };
+
+  const handleConfirmProfile = () => {
+    if (pendingProfileData) {
+      console.log('Profile updated:', pendingProfileData);
+      // In a real app, this would update the profile
+      // For now, just show success and close modals
+      setShowConfirmProfileModal(false);
+      setPendingProfileData(null);
+    }
   };
 
   // ── Theme tokens ─────────────────────────────────────────────────────────────
@@ -302,7 +349,10 @@ export default function CustomerPage() {
       <div className={`rounded-2xl border p-6 ${card}`}>
         <div className="flex items-center justify-between mb-5">
           <div className={`font-bold ${text}`}>Personal Information</div>
-          <button className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl transition-colors text-blue-500 ${D ? 'hover:bg-slate-800' : 'hover:bg-blue-50'}`}>
+          <button
+            onClick={() => setShowEditProfileModal(true)}
+            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl transition-colors text-blue-500 ${D ? 'hover:bg-slate-800' : 'hover:bg-blue-50'}`}
+          >
             <Icon path={IC.edit} className="w-3.5 h-3.5" /> Edit
           </button>
         </div>
@@ -329,7 +379,10 @@ export default function CustomerPage() {
       <div className={`rounded-2xl border p-6 ${card}`}>
         <div className="flex items-center justify-between mb-4">
           <div className={`font-bold ${text}`}>Delivery Addresses</div>
-          <button className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+          <button
+            onClick={() => setShowAddAddressModal(true)}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+          >
             <Icon path={IC.plus} className="w-3.5 h-3.5" /> Add
           </button>
         </div>
@@ -346,7 +399,14 @@ export default function CustomerPage() {
                   <div className={`text-xs leading-snug ${muted}`}>{addr.address}</div>
                 </div>
               </div>
-              <button className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors text-blue-500 ${D ? 'hover:bg-slate-700' : 'hover:bg-blue-50'}`}>Edit</button>
+                <button
+                  onClick={() => {
+                    setEditingAddress(addr);
+                    setShowAddAddressModal(true);
+                  }}
+                  className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors text-blue-500 ${D ? 'hover:bg-slate-700' : 'hover:bg-blue-50'}`}
+                >Edit
+              </button>
             </div>
           ))}
         </div>
@@ -592,15 +652,88 @@ export default function CustomerPage() {
       />
 
       {/* Frequency Confirm */}
-      <FrequencyConfirmModal
+      <ConfirmDialog
         show={showFreqConfirm}
         onClose={() => { setShowFreqConfirm(false); setFreqJug(null); }}
         onBack={() => { setShowFreqConfirm(false); setShowFreqModal(true); }}
         onConfirm={confirmFreq}
-        freqJug={freqJug}
-        pendingFreq={pendingFreq}
+        title="Confirm Update"
+        confirmText="Yes, Update"
         dark={D}
         theme={theme}
+        bannerMessage={
+          <>
+            Are you sure you want to update the refill frequency
+            {freqJug && <> for <strong className="font-mono">{freqJug.id}</strong></>} to{' '}
+            <strong>{pendingFreq}</strong>?
+          </>
+        }
+      />
+
+      {/* Add Address */}
+      <AddAddressModal
+        show={showAddAddressModal}
+        onClose={() => {
+          setShowAddAddressModal(false);
+          setEditingAddress(null);      // ← add this
+          setPendingAddressData(null);
+        }}
+        onContinue={handleAddAddressContinue}
+        initialData={editingAddress}   // ← add this
+        dark={D}
+        theme={theme}
+      />
+
+      {/* Confirm Address */}
+      <ConfirmDialog
+        show={showConfirmAddressModal}
+        onClose={() => { setShowConfirmAddressModal(false); setPendingAddressData(null); }}
+        onBack={() => { setShowConfirmAddressModal(false); setShowAddAddressModal(true); }}
+        onConfirm={handleConfirmAddress}
+        title="Add address to your profile?"
+        message="This address will be added to your profile and can be selected for future deliveries."
+        confirmText="Add Address"
+        isDangerous
+        dark={D}
+        theme={theme}
+        previewData={pendingAddressData ? [
+          { label: "Label",   value: pendingAddressData.label },
+          { label: "Address", value: pendingAddressData.address },
+          ...(pendingAddressData.isDefault
+            ? [{ label: "Default", extra: "Will be set as default" }]
+            : []),
+        ] : []}
+      />
+
+      {/* Edit Profile */}
+      <EditProfileModal
+        show={showEditProfileModal}
+        onClose={() => {
+          setShowEditProfileModal(false);
+          setPendingProfileData(null);
+        }}
+        onContinue={handleEditProfileContinue}
+        profileData={MOCK_PROFILE}
+        dark={D}
+        theme={theme}
+      />
+
+      {/* Confirm Profile */}
+      <ConfirmDialog
+        show={showConfirmProfileModal}
+        onClose={() => { setShowConfirmProfileModal(false); setPendingProfileData(null); }}
+        onBack={() => { setShowConfirmProfileModal(false); setShowEditProfileModal(true); }}
+        onConfirm={handleConfirmProfile}
+        title="Confirm Profile Changes?"
+        confirmText="Save Changes"
+        isDangerous
+        dark={D}
+        theme={theme}
+        previewData={pendingProfileData ? [
+          { label: "Full Name",     value: pendingProfileData.name },
+          { label: "Email Address", value: pendingProfileData.email, mono: true },
+          { label: "Phone Number",  value: pendingProfileData.phone },
+        ] : []}
       />
     </div>
   );

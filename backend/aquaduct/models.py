@@ -340,3 +340,49 @@ class ProfileChangeLog(models.Model):
 
     def __str__(self):
         return f"{self.user.email} changed {self.field_name} at {self.changed_at}"
+
+
+# ============================================================
+# ADMIN AUDIT LOG (for tracking admin actions)
+# ============================================================
+class AdminAuditLog(models.Model):
+    class Action(models.TextChoices):
+        # Order actions
+        ORDER_STATUS_CHANGED = "Order Status Changed", "Order Status Changed"
+        
+        # JugType actions
+        JUG_TYPE_CREATED = "Jug Type Created", "Jug Type Created"
+        JUG_TYPE_UPDATED = "Jug Type Updated", "Jug Type Updated"
+        JUG_TYPE_DELETED = "Jug Type Deleted", "Jug Type Deleted"
+        
+        # User actions
+        CUSTOMER_DELETED = "Customer Deleted", "Customer Deleted"
+        CUSTOMER_CREATED = "Customer Created", "Customer Created"
+        CUSTOMER_UPDATED = "Customer Updated", "Customer Updated"
+        
+        # Auth actions
+        LOGIN = "Login", "Login"
+        LOGOUT = "Logout", "Logout"
+
+    admin_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="admin_audit_logs")
+    action = models.CharField(max_length=50, choices=Action.choices)
+    resource_type = models.CharField(max_length=50)  # e.g., 'Order', 'JugType', 'User'
+    resource_id = models.PositiveIntegerField(null=True, blank=True)
+    old_values = models.JSONField(null=True, blank=True)  # stores previous state
+    new_values = models.JSONField(null=True, blank=True)  # stores new state
+    details = models.TextField(blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['-timestamp']),
+            models.Index(fields=['admin_user', '-timestamp']),
+            models.Index(fields=['action', '-timestamp']),
+        ]
+
+    def __str__(self):
+        admin_name = self.admin_user.email if self.admin_user else "System"
+        return f"{admin_name} - {self.get_action_display()} (ID: {self.resource_id}) at {self.timestamp}"
