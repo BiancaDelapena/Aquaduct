@@ -86,11 +86,11 @@ const JugCard = ({ jug, dark, theme, onToggleStatus, onOpenFreqModal }) => {
                                         : D ? 'text-emerald-400 hover:bg-slate-800' : 'text-emerald-600 hover:bg-emerald-50'
                                         }`}
                                 >
-                                    <Icon path={jug.status === 'ACTIVE' ? IC.pause : IC.play} className="w-4 h-4" />
-                                    {jug.status === 'ACTIVE' ? 'Set Inactive' : 'Set Active'}
+                                    <Icon path={jug.status === 'Active' ? IC.pause : IC.play} className="w-4 h-4" />
+                                    {jug.status === 'Active' ? 'Set Inactive' : 'Set Active'}
                                 </button>
 
-                                {jug.status === 'ACTIVE' && (
+                                {jug.status === 'Active' && (
                                     <>
                                         <div className={`h-px mx-3 ${D ? 'bg-slate-800' : 'bg-slate-100'}`} />
                                         <button className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors ${D ? 'text-red-400 hover:bg-slate-800' : 'text-red-600 hover:bg-red-50'}`}>

@@ -1,3 +1,4 @@
+# backend/aquaduct/services.py
 from django.db import transaction
 from django.utils import timezone
 
@@ -24,8 +25,9 @@ def create_jugs_for_paid_order(payment):
             continue
 
         jug = Jug.objects.create(
-            customer_profile=payment.order.customer_profile,
+            owner=payment.order.customer,
             jug_type=item.jug_type,
+            unique_id=f"JUG-{Jug.objects.count() + 1:04d}",  # Generate unique ID
             status=Jug.Status.ACTIVE,
         )
 
@@ -35,7 +37,6 @@ def create_jugs_for_paid_order(payment):
         created_jugs.append(jug)
 
     return created_jugs
-
 
 @transaction.atomic
 def mark_payment_as_paid(payment, reference_number=None):

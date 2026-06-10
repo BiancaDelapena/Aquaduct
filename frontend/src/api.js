@@ -1,25 +1,20 @@
+// api.js
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: 'http://127.0.0.1:8000/api/', // Change this to your backend server URL
-  timeout: 10000,
+  baseURL: 'http://localhost:8000/api/',
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Automatically inject JWT Access Token into every outgoing request
-API.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
+API.interceptors.request.use(config => {
+  const csrfToken = document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+  if (csrfToken) {
+    config.headers['X-CSRFToken'] = csrfToken;
   }
-);
+  return config;
+});
 
 export default API;

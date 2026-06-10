@@ -94,7 +94,7 @@ export default function ConfirmDialog({
           </button>
           <button
             type="button"
-            onClick={() => { onConfirm(); onClose(); }}
+            onClick={onConfirm}
             className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors text-white shadow-md ${
               isDangerous
                 ? "bg-red-600 hover:bg-red-700"

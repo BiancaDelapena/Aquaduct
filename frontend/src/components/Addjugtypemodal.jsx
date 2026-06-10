@@ -154,7 +154,7 @@ export default function AddJugTypeModal({ isOpen, onClose, onSave, dark, theme }
           >
             <span
               className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                form.isAvailable ? "left-4.9" : "left-0.5"
+                form.isAvailable ? "left-5" : "left-0.5"
               }`}
             />
           </button>

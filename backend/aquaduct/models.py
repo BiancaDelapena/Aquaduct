@@ -4,17 +4,19 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from datetime import timedelta
 
-# ============================================================
-# USER MODEL
-# ============================================================
 class User(AbstractUser):
     class Role(models.TextChoices):
         ADMIN = "Admin", "Admin"
         CUSTOMER = "Customer", "Customer"
 
+    name = models.CharField(max_length=255, blank=True)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.CUSTOMER)
-    phone_number = models.CharField(max_length=20, blank=True)   # mandatory for customers, enforced in forms/serializers
+    phone_number = models.CharField(max_length=20, blank=True)
+
+    failed_login_attempts = models.PositiveIntegerField(default=0)
+    lockout_until = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'users'
@@ -29,10 +31,13 @@ class User(AbstractUser):
     @property
     def is_admin_user(self):
         return self.role == self.Role.ADMIN
+    
+    @property
+    def is_locked_out(self):
+        if self.lockout_until and timezone.now() < self.lockout_until:
+            return True
+        return False
 
-# ============================================================
-# BASE
-# ============================================================
 class TimeStampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -40,10 +45,6 @@ class TimeStampedModel(models.Model):
     class Meta:
         abstract = True
 
-
-# ============================================================
-# ADDRESS
-# ============================================================
 class Address(TimeStampedModel):
     class AddressType(models.TextChoices):
         HOUSE = "House", "House"
@@ -53,10 +54,8 @@ class Address(TimeStampedModel):
     address_type = models.CharField(max_length=20, choices=AddressType.choices, default=AddressType.HOUSE)
     street_address = models.CharField(max_length=255)
     barangay = models.CharField(max_length=100, blank=True)
-    landmark = models.CharField(max_length=255, blank=True)
     building_name = models.CharField(max_length=100, blank=True)
     unit_number = models.CharField(max_length=50, blank=True)
-    address_notes = models.TextField(blank=True)
     is_default = models.BooleanField(default=False)
 
     class Meta:
@@ -76,8 +75,6 @@ class Address(TimeStampedModel):
         parts.append(self.street_address)
         if self.barangay:
             parts.append(f"Brgy. {self.barangay}")
-        if self.landmark:
-            parts.append(f"Near {self.landmark}")
         return ", ".join(parts)
 
     def save(self, *args, **kwargs):
@@ -85,9 +82,7 @@ class Address(TimeStampedModel):
             Address.objects.filter(user=self.user, is_default=True).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)
 
-# ============================================================
-# JUG TYPE
-# ============================================================
+
 class JugType(models.Model):
     type_name = models.CharField(max_length=50, unique=True)
     gallon_capacity = models.DecimalField(max_digits=5, decimal_places=2)
@@ -103,9 +98,7 @@ class JugType(models.Model):
     def __str__(self):
         return f"{self.type_name} ({self.gallon_capacity} gal)"
 
-# ============================================================
-# JUG (individual physical jug)
-# ============================================================
+
 class Jug(TimeStampedModel):
     class Status(models.TextChoices):
         ACTIVE = "Active", "Active"
@@ -134,9 +127,6 @@ class Jug(TimeStampedModel):
         return self.status == self.Status.ACTIVE
 
 
-# ============================================================
-# REFILL SCHEDULE
-# ============================================================
 class RefillSchedule(TimeStampedModel):
     class Status(models.TextChoices):
         ACTIVE = "Active", "Active"
@@ -160,9 +150,6 @@ class RefillSchedule(TimeStampedModel):
             raise ValidationError("Frequency must be > 0.")
 
 
-# ============================================================
-# ORDER
-# ============================================================
 class Order(TimeStampedModel):
     class Status(models.TextChoices):
         CREATED = "Created", "Created"
@@ -182,8 +169,8 @@ class Order(TimeStampedModel):
     )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.CREATED)
     order_source = models.CharField(max_length=20, choices=OrderSource.choices, default=OrderSource.WEB_APP)
-    delivery_address_snapshot = models.TextField()
-    price_snapshot = models.DecimalField(max_digits=10, decimal_places=2)   # frozen total at order time
+    delivery_address_snapshot = models.TextField(default='')
+    price_snapshot = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     special_instructions = models.TextField(blank=True)
     estimated_arrival = models.DateTimeField(null=True, blank=True)         # default = created_at + 2h
     actual_arrival = models.DateTimeField(null=True, blank=True)            # set when DELIVERED
@@ -197,7 +184,6 @@ class Order(TimeStampedModel):
         ]
 
     def save(self, *args, **kwargs):
-        # auto-set ETA on creation
         if not self.pk and not self.estimated_arrival:
             self.estimated_arrival = timezone.now() + timezone.timedelta(hours=2)
         super().save(*args, **kwargs)
@@ -208,10 +194,6 @@ class Order(TimeStampedModel):
     def can_be_cancelled(self):
         return self.status in [self.Status.CREATED]
 
-
-# ============================================================
-# ORDER ITEM
-# ============================================================
 class OrderItem(TimeStampedModel):
     class ItemType(models.TextChoices):
         NEW_JUG = "New Jug", "New Jug"
@@ -245,9 +227,6 @@ class OrderItem(TimeStampedModel):
                 raise ValidationError("New jug should not reference an existing jug.")
 
 
-# ============================================================
-# ORDER STATUS HISTORY (audit trail for status changes)
-# ============================================================
 class OrderStatusHistory(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="status_history")
     status = models.CharField(max_length=20, choices=Order.Status.choices)
@@ -261,10 +240,6 @@ class OrderStatusHistory(models.Model):
     def __str__(self):
         return f"Order #{self.order_id} → {self.status} at {self.changed_at}"
 
-
-# ============================================================
-# PAYMENT
-# ============================================================
 class Payment(models.Model):
     class PaymentStatus(models.TextChoices):
         PENDING = "Pending", "Pending"
@@ -283,10 +258,6 @@ class Payment(models.Model):
     def __str__(self):
         return f"Payment for Order #{self.order_id} - {self.payment_status}"
 
-
-# ============================================================
-# NOTIFICATIONS
-# ============================================================
 class Notification(models.Model):
     class NotificationType(models.TextChoices):
         REMINDER = "Reminder", "Reminder"
@@ -304,10 +275,6 @@ class Notification(models.Model):
     class Meta:
         ordering = ['-sent_at']
 
-
-# ============================================================
-# JUG REPORT (disputes / issues)
-# ============================================================
 class JugReport(TimeStampedModel):
     class ReportType(models.TextChoices):
         LOST = "Lost", "Lost"
@@ -328,12 +295,9 @@ class JugReport(TimeStampedModel):
     resolved_at = models.DateTimeField(null=True, blank=True)
 
 
-# ============================================================
-# PROFILE CHANGE LOG (for Name/Address history)
-# ============================================================
 class ProfileChangeLog(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="profile_changes")
-    field_name = models.CharField(max_length=50)   # e.g., 'first_name', 'last_name', 'address'
+    field_name = models.CharField(max_length=50)
     old_value = models.TextField()
     new_value = models.TextField()
     changed_at = models.DateTimeField(auto_now_add=True)
@@ -342,12 +306,8 @@ class ProfileChangeLog(models.Model):
         return f"{self.user.email} changed {self.field_name} at {self.changed_at}"
 
 
-# ============================================================
-# ADMIN AUDIT LOG (for tracking admin actions)
-# ============================================================
 class AdminAuditLog(models.Model):
     class Action(models.TextChoices):
-        # Order actions
         ORDER_STATUS_CHANGED = "Order Status Changed", "Order Status Changed"
         
         # JugType actions

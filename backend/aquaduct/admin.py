@@ -10,12 +10,30 @@ from .models import (
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    fieldsets = BaseUserAdmin.fieldsets + (
-        ("Role Info", {"fields": ("role", "phone_number")}),
+    fieldsets = (
+        (None, {'fields': ('username', 'password')}),
+        ('Personal Info', {'fields': ('name', 'email', 'phone_number')}),
+        ('Role', {'fields': ('role',)}),
+        ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
+        ('Important Dates', {'fields': ('last_login', 'date_joined')}),
+        ('Security', {'fields': ('failed_login_attempts', 'lockout_until')}),
     )
-    list_display = ("username", "email", "role", "phone_number", "is_staff", "is_active")
-    list_filter = ("role", "is_staff", "is_active")
-    search_fields = ("username", "email", "phone_number")
+    add_fieldsets = (
+        (None, {
+            'classes': ('wide',),
+            'fields': ('username', 'email', 'name', 'phone_number', 'role', 'password1', 'password2'),
+        }),
+    )
+    list_display = ('username', 'email', 'role', 'phone_number', 'is_staff', 'is_active', 'is_locked_out', 'failed_login_attempts')
+    list_filter = ('role', 'is_staff', 'is_active')
+    search_fields = ('username', 'email', 'phone_number', 'name')
+
+    actions = ['unlock_accounts']
+    def unlock_accounts(self, request, queryset):
+        queryset.update(failed_login_attempts=0, lockout_until=None)
+    unlock_accounts.short_description = "Unlock selected accounts"
+
+    readonly_fields = ('is_locked_out', 'failed_login_attempts', 'lockout_until')
 
 @admin.register(Address)
 class AddressAdmin(admin.ModelAdmin):

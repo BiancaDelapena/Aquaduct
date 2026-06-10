@@ -1,5 +1,5 @@
 //LoginPage.jsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import API from '../api';
 import logo from "../assets/logoaqud.png";
@@ -61,6 +61,16 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
+  useEffect(() => {
+    API.get('profile/')
+      .then(res => {
+        if (res.data.role === 'Admin') navigate('/admin-dashboard', { replace: true });
+        else navigate('/dashboard', { replace: true });
+      })
+      .catch(() => {
+      });
+  }, [navigate]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -72,15 +82,9 @@ export default function LoginPage() {
         role: role, // Explicitly sending requested role selection to the backend
       });
 
-      // 2. Saving variables to localStorage
-      localStorage.setItem("access_token", res.data.access);
-      localStorage.setItem("refresh_token", res.data.refresh);
-
       // Determine role from backend response. Some backends use boolean flags for staff.
       const roleFromResponse =
         res.data.role || (res.data.is_staff || res.data.is_superuser ? "Admin" : role);
-
-      localStorage.setItem("user_role", roleFromResponse);
 
       // 3. Role-Based Redirection
       if (roleFromResponse === "Customer") {

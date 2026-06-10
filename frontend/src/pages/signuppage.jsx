@@ -1,9 +1,10 @@
-import { useState } from "react";
+// signuppage.jsx
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import API from '../api';
 import logo from "../assets/logoaqud.png";
 
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
 const validateEmail = (value) => emailRegex.test(value);
 
 const DropletIcon = () => (
@@ -94,7 +95,7 @@ export default function RegisterPage() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
-    fullName: "",
+    name: "",
     email: "",
     phone: "",
     address: "",
@@ -139,14 +140,24 @@ export default function RegisterPage() {
 
     const email = form.email.trim();
     if (!validateEmail(email)) {
-      setEmailError("Please enter a valid email address.");
+      setEmailError("Please enter a valid email address (e.g. name@example.com).");
+      return;
+    }
+
+    if (!form.phone.trim()) {
+      setError("Phone number is required.");
+      return;
+    }
+
+    if (!form.address.trim()) {
+      setError("Address is required.");
       return;
     }
 
     setLoading(true);
     try {
       await API.post("register/", {
-        full_name: form.fullName,
+        name: form.name,
         email,
         phone: form.phone,
         address: form.address,
@@ -161,6 +172,16 @@ export default function RegisterPage() {
   };
 
   const passwordStatus = getPasswordRuleStatus(form.password);
+
+  useEffect(() => {
+    API.get('profile/')
+      .then(res => {
+        if (res.data.role === 'Admin') navigate('/admin-dashboard', { replace: true });
+        else navigate('/dashboard', { replace: true });
+      })
+      .catch(() => {
+      });
+  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-6">
@@ -209,18 +230,18 @@ export default function RegisterPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
 
-            {/* Full Name */}
+            {/* Name */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Full Name</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Name or Nickname</label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
                   <UserIcon />
                 </span>
                 <input
                   type="text"
-                  name="fullName"
-                  placeholder="Enter your full name"
-                  value={form.fullName}
+                  name="name"
+                  placeholder="Enter your Name or Nickname"
+                  value={form.name}
                   onChange={handleChange}
                   required
                   className="w-full pl-10 pr-4 py-3 border-2 border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 bg-slate-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
@@ -263,6 +284,7 @@ export default function RegisterPage() {
                   placeholder="+63 912 345 6789"
                   value={form.phone}
                   onChange={handleChange}
+                  required
                   className="w-full pl-10 pr-4 py-3 border-2 border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 bg-slate-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                 />
               </div>
@@ -281,6 +303,7 @@ export default function RegisterPage() {
                   value={form.address}
                   onChange={handleChange}
                   rows={2}
+                  required
                   className="w-full pl-10 pr-4 py-3 border-2 border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 bg-slate-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all resize-none"
                 />
               </div>

@@ -1,6 +1,7 @@
 // ─── CustomerPage.jsx ─────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import API from '../api';
 
 import Icon, { IC } from '../components/Icon';
 import StatusBadge from '../components/StatusBadge';
@@ -12,38 +13,48 @@ import AddAddressModal from '../components/AddAddressModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EditProfileModal from '../components/EditProfileModal';
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-const INITIAL_JUGS = [
-  { id: 'JUG-001', type: 'Circular Big', status: 'ACTIVE', lastRefill: '2026-05-28', nextRefill: '2026-06-11', frequency: '2 weeks' },
-  { id: 'JUG-002', type: 'Slim Med', status: 'ACTIVE', lastRefill: '2026-06-02', nextRefill: '2026-06-16', frequency: '2 weeks' },
-  { id: 'JUG-003', type: 'Circular Big', status: 'LOST', lastRefill: 'N/A', nextRefill: '-', frequency: '-' },
-];
-
-const MOCK_ORDERS = [
-  { id: 'AQ-9872', date: '2026-06-05', type: 'Refill Service', jug: 'JUG-001', amount: '₱30', status: 'Delivered', eta: '10:30', toa: '10:45', delay: '15 min' },
-  { id: 'AQ-9910', date: '2026-06-06', type: 'New Jug (Circular Big)', jug: 'JUG-003', amount: '₱125', status: 'In Transit', eta: '14:00', toa: '-', delay: '-' },
-];
-
-const MOCK_PROFILE = {
-  name: 'Bianca D. Dela Peña',
-  email: 'bianca@example.com',
-  phone: '+63 912 345 6789',
-  initials: 'BD',
-  addresses: [
-    { id: 1, label: 'Home', address: '123 Balibago Road, Angeles City, Pampanga', isDefault: true },
-    { id: 2, label: 'Office', address: 'City College of Angeles, Barangay Pampang, Angeles City', isDefault: false },
-  ],
-};
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function CustomerPage() {
   const navigate = useNavigate();
 
   const [dark, setDark] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [jugs, setJugs] = useState(INITIAL_JUGS);
+  const [jugs, setJugs] = useState([]);
   const [showChatbot, setShowChatbot] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
+
+  const [profile, setProfile] = useState(null);
+  const [addresses, setAddresses] = useState([]);
+
+  useEffect(() => {
+    API.get('profile/').then(res => setProfile(res.data));
+    API.get('addresses/').then(res => setAddresses(res.data));
+    API.get('jug-types/').then(res => setJugTypes(res.data));
+    API.get('jugs/').then(res => {
+      const transformed = res.data.map(j => ({
+        ...j,
+        db_id: j.id,                    // keep the real DB id for API calls
+        id: j.unique_id,                // display id for UI
+        type: j.jug_type_name,
+        lastRefill: j.last_delivered_at
+          ? new Date(j.last_delivered_at).toLocaleDateString()
+          : 'N/A',
+        nextRefill: j.refill_schedule?.next_reminder_at
+          ? new Date(j.refill_schedule.next_reminder_at).toLocaleDateString()
+          : '-',
+        frequency: j.refill_schedule
+          ? `${j.refill_schedule.frequency_days} days`
+          : '-',
+      }));
+      setJugs(transformed);
+    });
+    API.get('orders/').then(res => setOrders(res.data)); 
+  }, []);
+
+  const [orders, setOrders] = useState([]);
+
+  const [jugTypes, setJugTypes] = useState([]);
   const [showRefillModal, setShowRefillModal] = useState(false);
   const [showNewJugModal, setShowNewJugModal] = useState(false);
   const [selectedJugType, setSelectedJugType] = useState(null);
@@ -67,10 +78,16 @@ export default function CustomerPage() {
   const [pendingProfileData, setPendingProfileData] = useState(null);
 
   // ── Jug handlers ────────────────────────────────────────────────────────────
-  const toggleJugStatus = (id) => {
-    setJugs(prev =>
-      prev.map(j => j.id === id ? { ...j, status: j.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' } : j)
-    );
+  const toggleJugStatus = async (id) => {
+    const jug = jugs.find(j => j.id === id);
+    if (!jug) return;
+    const newStatus = jug.status === 'Active' ? 'Inactive' : 'Active';
+    try {
+      await API.patch(`jugs/${jug.db_id}/`, { status: newStatus });
+      setJugs(prev => prev.map(j => j.id === id ? { ...j, status: newStatus } : j));
+    } catch (err) {
+      console.error('Failed to update jug status:', err);
+    }
   };
 
   const openFreqModal = (jug) => {
@@ -79,8 +96,16 @@ export default function CustomerPage() {
     setShowFreqModal(true);
   };
 
-  const confirmFreq = () => {
-    setJugs(prev => prev.map(j => j.id === freqJug.id ? { ...j, frequency: pendingFreq } : j));
+  const confirmFreq = async () => {
+    if (!freqJug) return;
+    const freqMap = { '1 week': 7, '2 weeks': 14, '3 weeks': 21, '1 month': 30 };
+    const days = freqMap[pendingFreq] || 14;
+    try {
+      await API.patch(`jugs/${freqJug.db_id}/schedule/`, { frequency_days: days });
+      setJugs(prev => prev.map(j => j.id === freqJug.id ? { ...j, frequency: pendingFreq } : j));
+    } catch (err) {
+      console.error('Failed to update frequency:', err);
+    }
     setShowFreqConfirm(false);
     setFreqJug(null);
     setPendingFreq('');
@@ -93,13 +118,23 @@ export default function CustomerPage() {
     setShowConfirmAddressModal(true);
   };
 
-  const handleConfirmAddress = () => {
-    if (pendingAddressData) {
-      console.log('Address added:', pendingAddressData);
-      // In a real app, this would update the profile addresses
-      // For now, just show success and close modals
+  const handleConfirmAddress = async () => {
+    if (!pendingAddressData) return;
+    try {
+      if (editingAddress) {
+        await API.patch(`addresses/${editingAddress.id}/`, pendingAddressData);
+      } else {
+        await API.post('addresses/', pendingAddressData);
+      }
+
+      const refreshed = await API.get('addresses/');
+      setAddresses(refreshed.data);
+
       setShowConfirmAddressModal(false);
       setPendingAddressData(null);
+      setEditingAddress(null);
+    } catch (err) {
+      console.error('Failed to save address:', err.response?.data || err);
     }
   };
 
@@ -110,13 +145,20 @@ export default function CustomerPage() {
     setShowConfirmProfileModal(true);
   };
 
-  const handleConfirmProfile = () => {
+  const handleConfirmProfile = async () => {
     if (pendingProfileData) {
-      console.log('Profile updated:', pendingProfileData);
-      // In a real app, this would update the profile
-      // For now, just show success and close modals
-      setShowConfirmProfileModal(false);
-      setPendingProfileData(null);
+      try {
+        const res = await API.patch('profile/', {
+          name: pendingProfileData.name,
+          email: pendingProfileData.email,
+          phone_number: pendingProfileData.phone,
+        });
+        setProfile(res.data);
+        setShowConfirmProfileModal(false);
+        setPendingProfileData(null);
+      } catch (err) {
+        console.error('Failed to update profile:', err);
+      }
     }
   };
 
@@ -214,17 +256,21 @@ export default function CustomerPage() {
               ))}
             </div>
           </div>
-
+ 
           <div className={`rounded-2xl border p-6 ${card} space-y-4`}>
             <div className={`font-bold ${text}`}>Live Deliveries</div>
-            {MOCK_ORDERS.filter(o => o.status === 'In Transit').length === 0 ? (
+            {orders.filter(o => o.status === 'On The Way' || o.status === 'In Transit').length === 0 ? (
               <div className={`text-sm ${muted}`}>No active deliveries.</div>
             ) : (
-              MOCK_ORDERS.filter(o => o.status === 'In Transit').map(o => (
+              orders.filter(o => o.status === 'On The Way' || o.status === 'In Transit').map(o => (
                 <div key={o.id} className={`p-3 rounded-xl border ${D ? 'bg-amber-900/20 border-amber-700/40' : 'bg-amber-50 border-amber-200'}`}>
                   <div className={`text-sm font-bold ${D ? 'text-amber-300' : 'text-amber-800'}`}>{o.id}</div>
-                  <div className={`text-xs mt-0.5 ${D ? 'text-amber-400' : 'text-amber-600'}`}>{o.type}</div>
-                  <div className={`text-xs mt-1 font-medium ${D ? 'text-amber-300' : 'text-amber-700'}`}>ETA {o.eta}</div>
+                  <div className={`text-xs mt-0.5 ${D ? 'text-amber-400' : 'text-amber-600'}`}>
+                    {o.items?.[0]?.item_type || 'Order'}
+                  </div>
+                  <div className={`text-xs mt-1 font-medium ${D ? 'text-amber-300' : 'text-amber-700'}`}>
+                    ETA {o.estimated_arrival ? new Date(o.estimated_arrival).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—'}
+                  </div>
                 </div>
               ))
             )}
@@ -232,7 +278,7 @@ export default function CustomerPage() {
               <div className={`text-xs font-semibold uppercase tracking-wider mb-2 ${muted}`}>Default Address</div>
               <div className="flex gap-2 items-start">
                 <Icon path={IC.map} className={`w-4 h-4 mt-0.5 flex-shrink-0 ${muted}`} />
-                <p className={`text-xs leading-snug ${muted}`}>{MOCK_PROFILE.addresses.find(a => a.isDefault)?.address}</p>
+                <p className={`text-xs leading-snug ${muted}`}>{addresses.find(a => a.is_default)?.full_address}</p>
               </div>
             </div>
           </div>
@@ -241,10 +287,10 @@ export default function CustomerPage() {
         {/* Stats row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: 'Active Jugs', val: jugs.filter(j => j.status === 'ACTIVE').length, color: 'text-emerald-500', bg: D ? 'bg-emerald-900/30' : 'bg-emerald-50', icon: IC.droplet },
-            { label: 'In Transit', val: MOCK_ORDERS.filter(o => o.status === 'In Transit').length, color: 'text-blue-500', bg: D ? 'bg-blue-900/30' : 'bg-blue-50', icon: IC.truck },
+            { label: 'Active Jugs', val: jugs.filter(j => j.status === 'Active').length, color: 'text-emerald-500', bg: D ? 'bg-emerald-900/30' : 'bg-emerald-50', icon: IC.droplet },
+            { label: 'In Transit', val: orders.filter(o => o.status === 'On The Way' || o.status === 'In Transit').length, color: 'text-blue-500', bg: D ? 'bg-blue-900/30' : 'bg-blue-50', icon: IC.truck },
             { label: 'Next Refill', val: '9 days', color: 'text-amber-500', bg: D ? 'bg-amber-900/30' : 'bg-amber-50', icon: IC.clock },
-            { label: 'Orders (Jun)', val: MOCK_ORDERS.length, color: 'text-purple-500', bg: D ? 'bg-purple-900/30' : 'bg-purple-50', icon: IC.package },
+            { label: 'Orders (Jun)', val: orders.length, color: 'text-purple-500', bg: D ? 'bg-purple-900/30' : 'bg-purple-50', icon: IC.package },
           ].map(s => (
             <div key={s.label} className={`rounded-2xl border p-4 ${card}`}>
               <div className="flex items-center justify-between mb-3">
@@ -263,9 +309,10 @@ export default function CustomerPage() {
 
   // ── ORDERS ─────────────────────────────────────────────────────────────────
   const renderOrders = () => {
-    const grouped = MOCK_ORDERS.reduce((acc, o) => {
-      if (!acc[o.date]) acc[o.date] = [];
-      acc[o.date].push(o);
+    const grouped = orders.reduce((acc, o) => {
+      const dateKey = o.created_at?.split('T')[0] || new Date(o.created_at).toLocaleDateString();
+      if (!acc[dateKey]) acc[dateKey] = [];
+      acc[dateKey].push(o);
       return acc;
     }, {});
 
@@ -289,12 +336,12 @@ export default function CustomerPage() {
                   {orders.map(o => (
                     <tr key={o.id} className={`transition-colors ${D ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50'}`}>
                       <td className={`py-3.5 px-4 font-mono font-bold text-xs ${text}`}>{o.id}</td>
-                      <td className={`py-3.5 px-4 text-xs ${muted}`}>{o.jug}</td>
-                      <td className={`py-3.5 px-4 text-xs ${muted}`}>{o.type}</td>
-                      <td className={`py-3.5 px-4 text-xs ${muted}`}>{o.eta}</td>
-                      <td className={`py-3.5 px-4 text-xs ${muted}`}>{o.toa}</td>
+                      <td className={`py-3.5 px-4 text-xs ${muted}`}>{o.items?.[0]?.jug?.unique_id || o.items?.[0]?.jug_type?.type_name || '—'}</td>
+                      <td className={`py-3.5 px-4 text-xs font-bold ${text}`}>₱{o.price_snapshot}</td>
+                      <td className={`py-3.5 px-4 text-xs ${muted}`}>{o.estimated_arrival}</td>
+                      <td className={`py-3.5 px-4 text-xs ${muted}`}>{o.actual_arrival}</td>
                       <td className={`py-3.5 px-4 text-xs ${muted}`}>{o.delay}</td>
-                      <td className={`py-3.5 px-4 text-xs font-bold ${text}`}>{o.amount}</td>
+                      <td className={`py-3.5 px-4 text-xs font-bold ${text}`}>{o.price_snapshot}</td>
                       <td className="py-3.5 px-4"><StatusBadge status={o.status} dark={D} /></td>
                       <td className="py-3.5 px-4">
                         {o.status === 'Delivered' && (
@@ -334,11 +381,9 @@ export default function CustomerPage() {
     </div>
   );
 
-  const handleLogout = () => {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-      localStorage.removeItem("user_role");
-    navigate("/");
+  const handleLogout = async () => {
+  await API.post('logout/');
+  navigate('/');
   };
 
 
@@ -358,9 +403,9 @@ export default function CustomerPage() {
         </div>
         <div className="space-y-4">
           {[
-            { label: 'Full Name', val: MOCK_PROFILE.name, type: 'text' },
-            { label: 'Email', val: MOCK_PROFILE.email, type: 'email' },
-            { label: 'Phone Number', val: MOCK_PROFILE.phone, type: 'tel' },
+            { label: 'Name', val: profile?.name, type: 'text' },
+            { label: 'Email', val: profile?.email, type: 'email' },
+            { label: 'Phone Number', val: profile?.phone_number, type: 'tel' },
           ].map(f => (
             <div key={f.label}>
               <label className={`block text-xs font-semibold uppercase tracking-wider mb-1.5 ${muted}`}>{f.label}</label>
@@ -380,23 +425,26 @@ export default function CustomerPage() {
         <div className="flex items-center justify-between mb-4">
           <div className={`font-bold ${text}`}>Delivery Addresses</div>
           <button
-            onClick={() => setShowAddAddressModal(true)}
+            onClick={() => {
+              setEditingAddress(null); setShowAddAddressModal(true);
+            }}
             className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors"
           >
             <Icon path={IC.plus} className="w-3.5 h-3.5" /> Add
           </button>
         </div>
         <div className="space-y-3">
-          {MOCK_PROFILE.addresses.map(addr => (
+          {addresses.map(addr => (
             <div key={addr.id} className={`flex items-start justify-between gap-3 p-4 rounded-xl border transition-colors ${D ? 'border-slate-800 hover:bg-slate-800/50' : 'border-slate-200 hover:bg-slate-50'}`}>
               <div className="flex gap-3 items-start">
                 <Icon path={IC.map} className={`w-4 h-4 mt-0.5 flex-shrink-0 ${muted}`} />
                 <div>
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className={`text-sm font-bold ${text}`}>{addr.label}</span>
-                    {addr.isDefault && <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">Default</span>}
+                    {addr.is_default && <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">Default</span>}
                   </div>
-                  <div className={`text-xs leading-snug ${muted}`}>{addr.address}</div>
+                  <div className={`text-xs leading-snug ${muted}`}>{addr.full_address}
+                  </div>
                 </div>
               </div>
                 <button
@@ -410,16 +458,6 @@ export default function CustomerPage() {
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Session */}
-      <div className={`rounded-2xl border p-6 ${card}`}>
-        <div className={`font-bold mb-1 ${text}`}>Session</div>
-        <div className={`text-sm mb-4 ${muted}`}>Signed in as {MOCK_PROFILE.email}</div>
-        <button onClick={handleLogout}
-          className="bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white font-bold py-2.5 px-6 rounded-2xl text-sm tracking-wide shadow-lg shadow-red-200 transition-all duration-200">
-          Log Out
-        </button>
       </div>
     </div>
   );
@@ -467,14 +505,41 @@ export default function CustomerPage() {
               <Icon path={IC.bell} className="w-5 h-5" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
             </button>
-            <div className="flex items-center gap-2 pl-1">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black flex-shrink-0 shadow-md">
-                {MOCK_PROFILE.initials}
-              </div>
-              <span className={`text-sm font-semibold hidden sm:inline truncate max-w-[100px] ${text}`}>
-                {MOCK_PROFILE.name.split(' ')[0]}
-              </span>
+            <div className="relative">
+              <button
+                onClick={() => setShowProfileDropdown(v => !v)}
+                className={`flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl transition-colors ${D ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}
+              >
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${D ? 'bg-slate-700' : 'bg-slate-200'}`}>
+                  <Icon path={IC.user} className={`w-5 h-5 ${D ? 'text-slate-300' : 'text-slate-500'}`} />
+                </div>
+                <span className={`text-sm font-semibold hidden sm:inline truncate max-w-[100px] ${text}`}>
+                  {profile?.name?.split(' ')[0]}
+                </span>
+                <Icon path={IC.chevronDown} className={`w-4 h-4 hidden sm:block transition-transform duration-200 ${muted} ${showProfileDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showProfileDropdown && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowProfileDropdown(false)} />
+                  <div className={`absolute right-0 top-full mt-2 w-48 rounded-2xl border shadow-lg z-50 overflow-hidden ${D ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                    <div className={`px-4 py-3 border-b ${D ? 'border-slate-700' : 'border-slate-100'}`}>
+                      <div className={`text-sm font-bold truncate ${text}`}>{profile?.name}</div>
+                      <div className={`text-xs truncate mt-0.5 ${muted}`}>{profile?.email}</div>
+                    </div>
+                    <div className="p-1.5">
+                      <button
+                        onClick={() => { setShowProfileDropdown(false); handleLogout(); }}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-colors text-red-500 ${D ? 'hover:bg-red-900/20' : 'hover:bg-red-50'}`}
+                      >
+                        <Icon path={IC.logout} className="w-4 h-4" /> Log Out
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
+
           </div>
         </div>
 
@@ -538,7 +603,7 @@ export default function CustomerPage() {
             <label className={`block text-xs font-bold uppercase tracking-wider mb-3 ${muted}`}>1. Select Jug</label>
             <div className="space-y-2">
               {jugs.filter(j => j.status === 'ACTIVE').map(j => (
-                <button key={j.id} onClick={() => setSelectedJugForRefill(j.id)}
+                <button key={j.id} onClick={() => setSelectedJugForRefill(j)}
                   className={`w-full p-4 rounded-xl border-2 text-left flex items-center gap-3 transition-all ${selectedJugForRefill === j.id
                     ? 'border-blue-500 ' + (D ? 'bg-blue-900/20' : 'bg-blue-50')
                     : D ? 'border-slate-700 hover:border-slate-500' : 'border-slate-200 hover:border-blue-300'
@@ -559,7 +624,7 @@ export default function CustomerPage() {
           <div>
             <label className={`block text-xs font-bold uppercase tracking-wider mb-3 ${muted}`}>2. Delivery Address</label>
             <div className="space-y-2">
-              {MOCK_PROFILE.addresses.map(addr => (
+              {addresses.map(addr => (
                 <button key={addr.id} onClick={() => setSelectedAddress(addr.id)}
                   className={`w-full p-4 rounded-xl border-2 text-left flex items-start gap-3 transition-all ${selectedAddress === addr.id
                     ? 'border-blue-500 ' + (D ? 'bg-blue-900/20' : 'bg-blue-50')
@@ -569,9 +634,9 @@ export default function CustomerPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <span className={`text-sm font-bold ${D ? 'text-white' : 'text-slate-800'}`}>{addr.label}</span>
-                      {addr.isDefault && <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">Default</span>}
+                      {addr.is_default && <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">Default</span>}
                     </div>
-                    <div className={`text-xs mt-0.5 leading-snug ${muted}`}>{addr.address}</div>
+                    <div className={`text-xs mt-0.5 leading-snug ${muted}`}>{addr.full_address}</div>
                   </div>
                 </button>
               ))}
@@ -588,12 +653,29 @@ export default function CustomerPage() {
 
           <button
             disabled={!selectedJugForRefill || !selectedAddress}
-            onClick={() => { setShowRefillModal(false); setSelectedJugForRefill(null); setSelectedAddress(null); }}
+            onClick={async () => {
+              if (!selectedJugForRefill || !selectedAddress) return;
+              try {
+                await API.post('orders/', {
+                  address_id: selectedAddress,
+                  items: [{ item_type: 'Refill', jug_id: selectedJugForRefill.db_id, quantity: 1 }],
+                });
+                const res = await API.get('orders/');
+                setOrders(res.data);
+              } catch (err) {
+                console.error('Order failed:', err);
+              }
+              setShowRefillModal(false);
+              setSelectedJugForRefill(null);
+              setSelectedAddress(null);
+            }}
+
             className={`w-full py-3.5 rounded-xl font-bold text-sm transition-all ${selectedJugForRefill && selectedAddress
               ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20'
               : D ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
               }`}
           >
+            
             Confirm Refill Order
           </button>
         </div>
@@ -607,12 +689,9 @@ export default function CustomerPage() {
         dark={D}
       >
         <div className="p-6 space-y-3">
-          {[
-            { id: 'circular', name: 'Circular Water Jug Big', desc: 'Large capacity, built for families', price: '₱125' },
-            { id: 'square', name: 'Square Jug Small', desc: 'Compact design, easy to store', price: '₱125' },
-          ].map(j => (
-            <button key={j.id} onClick={() => setSelectedJugType(j.id)}
-              className={`w-full p-5 rounded-xl border-2 text-left flex items-center gap-4 transition-all ${selectedJugType === j.id
+          {jugTypes.filter(jt => jt.is_available).map(jt => (
+            <button key={jt.id} onClick={() => setSelectedJugType(jt.id)}
+              className={`w-full p-5 rounded-xl border-2 text-left flex items-center gap-4 transition-all ${selectedJugType === jt.id
                 ? 'border-blue-500 ' + (D ? 'bg-blue-900/20' : 'bg-blue-50')
                 : D ? 'border-slate-700 hover:border-slate-600' : 'border-slate-200 hover:border-blue-300'
                 }`}>
@@ -620,15 +699,29 @@ export default function CustomerPage() {
                 <Icon path={IC.droplet} className="w-6 h-6 text-blue-500" />
               </div>
               <div className="flex-1">
-                <div className={`font-bold ${D ? 'text-white' : 'text-slate-800'}`}>{j.name}</div>
-                <div className={`text-sm ${muted}`}>{j.desc}</div>
+                <div className={`font-bold ${D ? 'text-white' : 'text-slate-800'}`}>{jt.type_name}</div>
+                <div className={`text-sm ${muted}`}>{jt.description || `${jt.gallon_capacity} gal`}</div>
               </div>
-              <div className={`text-xl font-black flex-shrink-0 ${D ? 'text-white' : 'text-slate-800'}`}>{j.price}</div>
+              <div className={`text-xl font-black flex-shrink-0 ${D ? 'text-white' : 'text-slate-800'}`}>₱{jt.purchase_price}</div>
             </button>
           ))}
           <button
             disabled={!selectedJugType}
-            onClick={() => { setShowNewJugModal(false); setSelectedJugType(null); }}
+            onClick={async () => {
+              if (!selectedJugType || !addresses[0]?.id) return;
+              try {
+                await API.post('orders/', {
+                  address_id: addresses[0]?.id,
+                  items: [{ item_type: 'New Jug', jug_type_id: selectedJugType, quantity: 1 }],
+                });
+                const res = await API.get('orders/');
+                setOrders(res.data);
+              } catch (err) {
+                console.error('Order failed:', err);
+              }
+              setShowNewJugModal(false);
+              setSelectedJugType(null);
+            }}
             className={`w-full py-3.5 rounded-xl font-bold text-sm mt-2 transition-all ${selectedJugType
               ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
               : D ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -675,11 +768,11 @@ export default function CustomerPage() {
         show={showAddAddressModal}
         onClose={() => {
           setShowAddAddressModal(false);
-          setEditingAddress(null);      // ← add this
+          setEditingAddress(null);
           setPendingAddressData(null);
         }}
         onContinue={handleAddAddressContinue}
-        initialData={editingAddress}   // ← add this
+        initialData={editingAddress}
         dark={D}
         theme={theme}
       />
@@ -690,18 +783,25 @@ export default function CustomerPage() {
         onClose={() => { setShowConfirmAddressModal(false); setPendingAddressData(null); }}
         onBack={() => { setShowConfirmAddressModal(false); setShowAddAddressModal(true); }}
         onConfirm={handleConfirmAddress}
-        title="Add address to your profile?"
-        message="This address will be added to your profile and can be selected for future deliveries."
-        confirmText="Add Address"
+        title={editingAddress ? "Save address changes?" : "Add address to your profile?"}  // ← dynamic
+        message={editingAddress
+          ? "Your address will be updated."
+          : "This address will be added to your profile and can be selected for future deliveries."
+        }
+        confirmText={editingAddress ? "Save Changes" : "Add Address"}  // ← dynamic
         isDangerous
         dark={D}
         theme={theme}
         previewData={pendingAddressData ? [
-          { label: "Label",   value: pendingAddressData.label },
-          { label: "Address", value: pendingAddressData.address },
-          ...(pendingAddressData.isDefault
-            ? [{ label: "Default", extra: "Will be set as default" }]
-            : []),
+          { label: "Type",     value: pendingAddressData.address_type },
+          ...(pendingAddressData.address_type === 'Apartment' ? [
+            { label: "Unit",     value: pendingAddressData.unit_number },
+            { label: "Building", value: pendingAddressData.building_name || '—' },
+          ] : []),
+          { label: "Street",   value: pendingAddressData.street_address },
+          { label: "Barangay", value: pendingAddressData.barangay || '—' },
+          { label: "City",     value: "Quezon City" },
+          ...(pendingAddressData.is_default ? [{ label: "Default", extra: "Will be set as default" }] : []),
         ] : []}
       />
 
@@ -713,7 +813,7 @@ export default function CustomerPage() {
           setPendingProfileData(null);
         }}
         onContinue={handleEditProfileContinue}
-        profileData={MOCK_PROFILE}
+        profileData={profile}
         dark={D}
         theme={theme}
       />
@@ -730,9 +830,9 @@ export default function CustomerPage() {
         dark={D}
         theme={theme}
         previewData={pendingProfileData ? [
-          { label: "Full Name",     value: pendingProfileData.name },
+          { label: "Name",     value: pendingProfileData.name, mono: true },
           { label: "Email Address", value: pendingProfileData.email, mono: true },
-          { label: "Phone Number",  value: pendingProfileData.phone },
+          { label: "Phone Number",  value: pendingProfileData.phone, mono: true },
         ] : []}
       />
     </div>

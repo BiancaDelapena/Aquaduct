@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import Modal from './Modal';
 import Icon, { IC } from './Icon';
+import API from '../api';
 
 /**
  * Props:
@@ -24,7 +25,7 @@ const EditProfileModal = ({ show, onClose, onContinue, profileData, dark, theme 
         if (show && profileData) {
             setName(profileData.name || '');
             setEmail(profileData.email || '');
-            setPhone(profileData.phone || '');
+            setPhone(profileData.phone_number || '');
         }
     }, [show, profileData]);
 
@@ -47,11 +48,11 @@ const EditProfileModal = ({ show, onClose, onContinue, profileData, dark, theme 
             <div className="p-6 space-y-5">
                 <div>
                     <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${muted}`}>
-                        Full Name
+                        Name
                     </label>
                     <input
                         type="text"
-                        placeholder="Enter your full name"
+                        placeholder="Enter your name or nickname"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium outline-none transition-colors ${inp}`}

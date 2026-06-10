@@ -77,17 +77,19 @@ def log_jug_type_change(sender, instance, created, **kwargs):
     )
 
 
-@receiver(post_delete, sender=JugType)
-def log_jug_type_delete(sender, instance, **kwargs):
-    """Log JugType deletion"""
-    AdminAuditLog.objects.create(
-        admin_user=None,
-        action=AdminAuditLog.Action.JUG_TYPE_DELETED,
-        resource_type='JugType',
-        resource_id=instance.id,
-        old_values=serialize_model(instance),
-        details=f"Jug Type deleted: {instance.type_name}",
-    )
+@receiver(user_logged_in)
+def log_user_login(sender, request, user, **kwargs):
+    """Log user login"""
+    if user.is_admin_user:
+        ip_address, user_agent = get_request_data(request)
+        AdminAuditLog.objects.create(
+            admin_user=user,
+            action=AdminAuditLog.Action.LOGIN,
+            resource_type='Auth',
+            details=f"Admin {user.email} logged in",
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
 
 
 @receiver(post_delete, sender=User)
@@ -102,8 +104,7 @@ def log_user_delete(sender, instance, **kwargs):
             old_values={
                 'email': instance.email,
                 'username': instance.username,
-                'first_name': instance.first_name,
-                'last_name': instance.last_name,
+                'name': instance.name,
                 'phone_number': instance.phone_number,
             },
             details=f"Customer deleted: {instance.email}",
