@@ -31,7 +31,7 @@ from .permissions import IsRole, IsOwnerOrAdmin
 
 
 # ═══════════════ AUTHENTICATION VIEWS ═══════════════
-@method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
+# @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class CustomTokenObtainPairView(TokenObtainPairView):
     """
     Login view that returns HttpOnly JWT cookies instead of token JSON.

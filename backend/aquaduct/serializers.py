@@ -66,8 +66,9 @@ class RegisterSerializer(serializers.Serializer):
         return user
 
     def validate_phone(self, value):
-        if self.instance and self.instance.role == 'Customer' and not value:
-            raise serializers.ValidationError("Phone number is required for customers.")
+        import re
+        if value and not re.match(r'^\+?[0-9]{7,15}$', value):
+            raise serializers.ValidationError("Phone number must be 7–15 digits and may start with '+'.")
         return value
 
     def update(self, instance, validated_data):

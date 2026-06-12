@@ -107,19 +107,34 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [emailError, setEmailError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
 
   const handleChange = (e) => {
-    let value = e.target.value;
-    if (e.target.name === 'email') {
+    const { name, value: rawValue } = e.target;
+    let value = rawValue;
+
+    if (name === 'email') {
       value = value.trim();
     }
-    if (e.target.name === 'phone') {
+    if (name === 'phone') {
       value = value.replace(/[A-Za-z]/g, '');
     }
-    setForm({ ...form, [e.target.name]: value });
-    if (e.target.name === 'email') setEmailError("");
-    if (e.target.name === 'password') {
+
+    setForm((prev) => ({ ...prev, [name]: value }));
+
+    if (name === 'email') {
+      setEmailError("");
+    }
+    if (name === 'password' || name === 'confirmPassword') {
       setError("");
+    }
+    if (name === 'phone') {
+      const phonePattern = /^\+?[0-9]{7,15}$/;
+      if (value.trim() && !phonePattern.test(value.replace(/\s/g, ''))) {
+        setPhoneError("Phone number must be 7–15 digits and can start with '+'");
+      } else {
+        setPhoneError("");
+      }
     }
   };
 
@@ -153,6 +168,12 @@ export default function RegisterPage() {
       setError("Address is required.");
       return;
     }
+
+    const phonePattern = /^\+?[0-9]{7,15}$/;
+      if (!phonePattern.test(form.phone.replace(/\s/g, ''))) {
+        setPhoneError("Please enter a valid phone number (7–15 digits, optional +).");
+        return;
+      }
 
     setLoading(true);
     try {
@@ -279,7 +300,6 @@ export default function RegisterPage() {
                 <input
                   type="tel"
                   inputMode="tel"
-                  pattern="[0-9+\-() ]*"
                   name="phone"
                   placeholder="+63 912 345 6789"
                   value={form.phone}
@@ -288,6 +308,7 @@ export default function RegisterPage() {
                   className="w-full pl-10 pr-4 py-3 border-2 border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 bg-slate-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                 />
               </div>
+              {phoneError && <p className="text-red-500 text-xs mt-1">{phoneError}</p>}
             </div>
 
             {/* Address */}

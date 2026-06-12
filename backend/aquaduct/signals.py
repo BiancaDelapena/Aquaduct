@@ -8,7 +8,6 @@ from .models import AdminAuditLog, Order, OrderStatusHistory, JugType, User
 
 User = get_user_model()
 
-
 def get_request_data(request=None):
     """Extract IP and user agent from request"""
     ip_address = None
@@ -26,7 +25,6 @@ def get_request_data(request=None):
     
     return ip_address, user_agent
 
-
 def serialize_model(obj):
     """Convert model instance to dict for audit logging"""
     data = {}
@@ -39,7 +37,6 @@ def serialize_model(obj):
             value = str(value)
         data[field.name] = value
     return data
-
 
 @receiver(post_save, sender=OrderStatusHistory)
 def log_order_status_change(sender, instance, created, **kwargs):
@@ -55,7 +52,6 @@ def log_order_status_change(sender, instance, created, **kwargs):
             new_values={'status': instance.status},
             details=f"Order status changed to {instance.status}. {instance.remarks}" if instance.remarks else f"Order status changed to {instance.status}",
         )
-
 
 @receiver(post_save, sender=JugType)
 def log_jug_type_change(sender, instance, created, **kwargs):
@@ -76,7 +72,6 @@ def log_jug_type_change(sender, instance, created, **kwargs):
         details=f"{action_desc}: {instance.type_name}",
     )
 
-
 @receiver(user_logged_in)
 def log_user_login(sender, request, user, **kwargs):
     """Log user login"""
@@ -90,7 +85,6 @@ def log_user_login(sender, request, user, **kwargs):
             ip_address=ip_address,
             user_agent=user_agent,
         )
-
 
 @receiver(post_delete, sender=User)
 def log_user_delete(sender, instance, **kwargs):
@@ -110,7 +104,6 @@ def log_user_delete(sender, instance, **kwargs):
             details=f"Customer deleted: {instance.email}",
         )
 
-
 @receiver(user_logged_in)
 def log_user_login(sender, request, user, **kwargs):
     """Log user login"""
@@ -124,7 +117,6 @@ def log_user_login(sender, request, user, **kwargs):
             ip_address=ip_address,
             user_agent=user_agent,
         )
-
 
 @receiver(user_logged_out)
 def log_user_logout(sender, request, user, **kwargs):
