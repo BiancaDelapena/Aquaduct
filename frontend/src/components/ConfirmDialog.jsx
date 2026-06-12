@@ -1,7 +1,7 @@
 // ConfirmDialog.jsx
 import Modal from "./Modal";
 import { AlertCircle } from "lucide-react";
-import Icon, { IC } from "./Icon";
+import Icon, { IC } from "./MyIcons";
 
 export default function ConfirmDialog({
   isOpen,
@@ -22,7 +22,7 @@ export default function ConfirmDialog({
   const isVisible = isOpen ?? show ?? false;
   const D = dark;
   const muted = theme?.muted ?? (D ? "text-slate-400" : "text-slate-500");
-  const text  = theme?.text  ?? (D ? "text-slate-100" : "text-slate-800");
+  const text = theme?.text ?? (D ? "text-slate-100" : "text-slate-800");
 
   const resolvedCancelText = cancelText ?? (onBack ? "Go Back" : "Cancel");
   const handleCancel = onBack ?? onClose;
@@ -33,9 +33,8 @@ export default function ConfirmDialog({
 
         {/* Blue info banner — used by FrequencyConfirmModal */}
         {bannerMessage && (
-          <div className={`flex gap-3 p-4 rounded-xl border ${
-            D ? "bg-blue-900/20 border-blue-800/60" : "bg-blue-50 border-blue-100"
-          }`}>
+          <div className={`flex gap-3 p-4 rounded-xl border ${D ? "bg-blue-900/20 border-blue-800/60" : "bg-blue-50 border-blue-100"
+            }`}>
             <Icon path={IC.refresh} className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
             <p className={`text-sm leading-relaxed ${D ? "text-blue-300" : "text-blue-800"}`}>
               {bannerMessage}
@@ -55,9 +54,8 @@ export default function ConfirmDialog({
 
         {/* Structured preview */}
         {previewData && previewData.length > 0 && (
-          <div className={`rounded-xl border p-4 space-y-3 ${
-            D ? "bg-slate-800/40 border-slate-700" : "bg-slate-50 border-slate-200"
-          }`}>
+          <div className={`rounded-xl border p-4 space-y-3 ${D ? "bg-slate-800/40 border-slate-700" : "bg-slate-50 border-slate-200"
+            }`}>
             {previewData.map(({ label, value, mono, extra }) => (
               <div key={label}>
                 <div className={`text-xs font-semibold uppercase tracking-wider ${muted}`}>
@@ -84,22 +82,20 @@ export default function ConfirmDialog({
           <button
             type="button"
             onClick={handleCancel}
-            className={`flex-1 py-2.5 rounded-xl border font-semibold text-sm transition-colors ${
-              D
+            className={`flex-1 py-2.5 rounded-xl border font-semibold text-sm transition-colors ${D
                 ? "border-slate-700 text-slate-300 hover:bg-slate-800"
                 : "border-slate-300 text-slate-600 hover:bg-slate-50"
-            }`}
+              }`}
           >
             {resolvedCancelText}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors text-white shadow-md ${
-              isDangerous
+            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors text-white shadow-md ${isDangerous
                 ? "bg-red-600 hover:bg-red-700"
                 : "bg-blue-600 hover:bg-blue-700"
-            }`}
+              }`}
           >
             {confirmText}
           </button>

@@ -75,13 +75,12 @@ const AddAddressModal = ({ show, onClose, onContinue, dark, theme, initialData =
                 key={type}
                 type="button"
                 onClick={() => setAddressType(type)}
-                className={`py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${
-                  addressType === type
-                    ? 'border-blue-500 bg-blue-600 text-white'
-                    : D
+                className={`py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${addressType === type
+                  ? 'border-blue-500 bg-blue-600 text-white'
+                  : D
                     ? 'border-slate-700 text-slate-300 hover:border-slate-500'
                     : 'border-slate-200 text-slate-600 hover:border-blue-300'
-                }`}
+                  }`}
               >
                 {type === 'House' ? '🏠 House' : '🏢 Apartment'}
               </button>
@@ -131,22 +130,20 @@ const AddAddressModal = ({ show, onClose, onContinue, dark, theme, initialData =
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className={`flex-1 py-2.5 rounded-xl border font-semibold text-sm transition-colors ${
-                D ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-300 text-slate-600 hover:bg-slate-50'
-              }`}
+              className={`flex-1 py-2.5 rounded-xl border font-semibold text-sm transition-colors ${D ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                }`}
             >
               Cancel
             </button>
             <button
               onClick={handleContinue}
               disabled={!isComplete}
-              className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors ${
-                isComplete
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
-                  : D
+              className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors ${isComplete
+                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
+                : D
                   ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
                   : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-              }`}
+                }`}
             >
               {isEditing ? 'Review Changes' : 'Review Address'}
             </button>

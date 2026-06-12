@@ -1,7 +1,7 @@
 // ─── EditProfileModal.jsx ──────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
 import Modal from './Modal';
-import Icon, { IC } from './Icon';
+import Icon, { IC } from './MyIcons';
 import API from '../api';
 
 /**
@@ -96,13 +96,12 @@ const EditProfileModal = ({ show, onClose, onContinue, profileData, dark, theme 
                         <button
                             onClick={handleContinue}
                             disabled={!isComplete}
-                            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors ${
-                                isComplete
+                            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors ${isComplete
                                     ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
                                     : D
-                                    ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                            }`}
+                                        ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                }`}
                         >
                             Review Changes
                         </button>

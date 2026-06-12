@@ -1,6 +1,6 @@
 // ─── Modal.jsx ────────────────────────────────────────────────────────────────
 import { useEffect } from 'react';
-import Icon, { IC } from './Icon.jsx';
+import Icon, { IC } from './MyIcons';
 
 const Modal = ({ show, onClose, title, dark, children, maxWidth = 'max-w-lg' }) => {
     // Close on Escape key

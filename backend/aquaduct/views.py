@@ -13,12 +13,13 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django_ratelimit.decorators import ratelimit
 from datetime import timedelta
-
+# pyrefly: ignore [missing-import]
 from .models import (
     User, Address,
     JugType, Jug, RefillSchedule, Order, OrderItem,
     OrderStatusHistory, Payment, Notification, JugReport, AdminAuditLog,
 )
+# pyrefly: ignore [missing-import]
 from .serializers import (
     UserSerializer, AddressSerializer, RegisterSerializer,
     JugTypeSerializer, JugSerializer,
@@ -27,6 +28,7 @@ from .serializers import (
     PaymentSerializer, NotificationSerializer,
     JugReportSerializer, AdminAuditLogSerializer,
 )
+# pyrefly: ignore [missing-import]
 from .permissions import IsRole, IsOwnerOrAdmin
 
 
@@ -251,7 +253,11 @@ class JugTypeListCreateView(generics.ListCreateAPIView):
     queryset = JugType.objects.all()
     serializer_class = JugTypeSerializer
     required_role = 'Admin'
-    permission_classes = [IsRole]
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [permissions.IsAuthenticated()]
+        return [IsRole()]
 
 
 class JugTypeDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -326,6 +332,9 @@ class OrderListCreateView(generics.ListCreateAPIView):
             customer_id = self.request.query_params.get('user_id')
             if customer_id:
                 qs = qs.filter(customer_id=customer_id)
+            status_filter = self.request.query_params.get('status')
+            if status_filter:
+                qs = qs.filter(status=status_filter)
             return qs
         return Order.objects.filter(customer=user)
 
@@ -411,6 +420,9 @@ class OrderStatusUpdateView(generics.UpdateAPIView):
         new_status = serializer.validated_data['status']
         instance = self.get_object()
         instance.status = new_status
+        if new_status == Order.Status.DELIVERED:
+            instance.actual_arrival = timezone.now()
+            instance.completed_at = timezone.now()
         instance.save()
         OrderStatusHistory.objects.create(
             order=instance,

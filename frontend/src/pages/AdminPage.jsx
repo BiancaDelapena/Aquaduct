@@ -1,12 +1,12 @@
 // AdminPage.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Droplets, Users, Package, AlertCircle, DollarSign, FileText, Clock, Search,
-  Filter, ChevronRight, Calendar, CheckCircle, History, Navigation, LogOut
+  Filter, ChevronRight, Calendar, CheckCircle, History, Navigation, LogOut, RefreshCw,
 } from 'lucide-react';
 import API from '../api';
-import Icon, { IC } from '../components/Icon';
+import Icon, { IC } from '../components/MyIcons';
 
 import { StatCard } from '../components/Statcard';
 import { OrderStatusBadge } from '../components/Orderstatusbadge';
@@ -16,56 +16,36 @@ import EditJugTypeModal from '../components/Editjugtypemodal';
 import RowActionMenu from '../components/RowActionMenu';
 import ConfirmDialog from '../components/ConfirmDialog';
 
-const jugStatusData = [
-  { name: 'Active',  value: 856, color: '#10b981' },
-  { name: 'Lost',    value: 23,  color: '#ef4444' },
-  { name: 'Broken',  value: 12,  color: '#f59e0b' },
-  { name: 'Retired', value: 45,  color: '#64748b' },
+// Status values must match backend Order.Status choices exactly
+const ORDER_STATUS_OPTIONS = [
+  'Created',
+  'To Be Picked Up',
+  'Refilling',
+  'On The Way',
+  'Delivered',
+  'Cancelled',
 ];
 
-const mockActiveOrders = [
-  {
-    id: 'ORD002', customer: 'John Doe', address: '123 Main St, Quezon City',
-    phone: '+63 912 345 6789', jug: 'JUG002', type: 'Refill',
-    price: '₱30', eta: '11:00 AM', priority: 'High', status: 'pending',
-  },
-  {
-    id: 'ORD003', customer: 'Jane Smith', address: '456 Oak Ave, Makati',
-    phone: '+63 917 654 3210', jug: 'JUG005', type: 'New Jug',
-    price: '₱125', eta: '1:30 PM', priority: 'Normal', status: 'pending',
-  },
-];
-
-const mockAllOrders = [
-  { id: 'ORD002', customer: 'John Doe',     status: 'Pending',    price: '₱30',  date: '2026-05-14 09:00' },
-  { id: 'ORD003', customer: 'Jane Smith',   status: 'On the way', price: '₱125', date: '2026-05-14 11:20' },
-  { id: 'ORD004', customer: 'Roberto Lim',  status: 'Refilling',  price: '₱30',  date: '2026-05-14 12:00' },
-];
-
-const mockHistory = [
-  { id: 'ORD998', customer: 'Carlos Tan',   type: 'Refill',  price: '₱30',  time: '09:30 AM', date: '2026-05-14' },
-  { id: 'ORD997', customer: 'Ana Reyes',    type: 'Refill',  price: '₱30',  time: '08:15 AM', date: '2026-05-14' },
-  { id: 'ORD985', customer: 'Liza Santos',  type: 'Refill',  price: '₱30',  time: '02:10 PM', date: '2026-05-13' },
-];
-
-const mockAuditLogs = [
-  { id: 1, timestamp: '2026-05-14 10:45', admin: 'Bianca Dela Peña', action: 'Order Status Changed', resourceType: 'Order',   resourceId: 'ORD001' },
-  { id: 2, timestamp: '2026-05-14 11:20', admin: 'Bianca Dela Peña', action: 'Order Status Changed', resourceType: 'Order',   resourceId: 'ORD002' },
-  { id: 3, timestamp: '2026-05-14 12:00', admin: 'Carlos Tan',       action: 'Jug Type Created',     resourceType: 'JugType', resourceId: 'Standard 5L' },
-  { id: 4, timestamp: '2026-05-14 13:30', admin: 'Carlos Tan',       action: 'Jug Type Updated',     resourceType: 'JugType', resourceId: 'Large 10L' },
-  { id: 5, timestamp: '2026-05-14 14:10', admin: 'Bianca Dela Peña', action: 'Jug Type Deleted',     resourceType: 'JugType', resourceId: 'Old Slim Jug' },
-  { id: 6, timestamp: '2026-05-14 15:00', admin: 'Bianca Dela Peña', action: 'Customer Updated',     resourceType: 'User',    resourceId: 'USR004' },
-  { id: 7, timestamp: '2026-05-14 15:45', admin: 'Carlos Tan',       action: 'Login',                resourceType: 'Auth',    resourceId: '-' },
-];
+// Statuses considered "active" (in-progress deliveries)
+const ACTIVE_STATUSES = new Set(['Created', 'To Be Picked Up', 'Refilling', 'On The Way']);
 
 export function AdminDashboard() {
   const navigate = useNavigate();
 
   const [dark, setDark] = useState(false);
-  const [activeTab, setActiveTab]     = useState('dashboard');
-  const [searchTerm, setSearchTerm]   = useState('');
-  const [activeOrders, setActiveOrders] = useState(mockActiveOrders);
-  const [allOrders, setAllOrders]       = useState(mockAllOrders);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // ── Real data state ─────────────────────────────────────────────────────────
+  const [orders, setOrders] = useState([]);  // all orders from API
+  const [jugTypes, setJugTypes] = useState([]);
+  const [jugs, setJugs] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // ── Modal state ──────────────────────────────────────────────────────────────
   const [isAddJugTypeModalOpen, setIsAddJugTypeModalOpen] = useState(false);
   const [isEditJugTypeModalOpen, setIsEditJugTypeModalOpen] = useState(false);
   const [selectedJugType, setSelectedJugType] = useState(null);
@@ -73,58 +53,108 @@ export function AdminDashboard() {
   const [isEditConfirmOpen, setIsEditConfirmOpen] = useState(false);
   const [jugTypeToDelete, setJugTypeToDelete] = useState(null);
   const [jugTypeToEdit, setJugTypeToEdit] = useState(null);
-  const [jugTypes, setJugTypes] = useState([
-    { id: 1, typeName: 'Standard 5L', capacity: '5L', purchasePrice: '₱150', refillPrice: '₱30', isAvailable: true },
-    { id: 2, typeName: 'Large 10L', capacity: '10L', purchasePrice: '₱250', refillPrice: '₱50', isAvailable: true },
-    { id: 3, typeName: 'Premium 5L', capacity: '5L', purchasePrice: '₱200', refillPrice: '₱35', isAvailable: true },
-  ]);
   const [auditSearchTerm, setAuditSearchTerm] = useState('');
-  const [profile, setProfile] = useState(null);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
-  useEffect(() => {
-    API.get('profile/').then(res => setProfile(res.data)).catch(() => {});
+  // ── Derived slices ───────────────────────────────────────────────────────────
+  const activeOrders = orders.filter(o => ACTIVE_STATUSES.has(o.status));
+  const historyOrders = orders.filter(o => o.status === 'Delivered');
+
+  // Jug status counts from real data
+  const jugStatusData = [
+    { name: 'Active', value: jugs.filter(j => j.status === 'Active').length, color: '#10b981' },
+    { name: 'Inactive', value: jugs.filter(j => j.status === 'Inactive').length, color: '#64748b' },
+    { name: 'Lost', value: jugs.filter(j => j.status === 'Lost').length, color: '#ef4444' },
+    { name: 'Broken', value: jugs.filter(j => j.status === 'Broken').length, color: '#f59e0b' },
+  ];
+
+  // ── Data loading ─────────────────────────────────────────────────────────────
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [profileRes, ordersRes, jugTypesRes, jugsRes, auditRes] = await Promise.all([
+        API.get('profile/'),
+        API.get('orders/'),
+        API.get('jug-types/'),
+        API.get('jugs/'),
+        API.get('admin/audit-logs/'),
+      ]);
+      setProfile(jugTypesRes && profileRes.data);
+      setOrders(ordersRes.data);
+      setJugTypes(jugTypesRes.data);
+      setJugs(jugsRes.data);
+      setAuditLogs(auditRes.data);
+      // also set profile properly
+      setProfile(profileRes.data);
+    } catch (err) {
+      console.error('Failed to load admin data:', err);
+      setError('Failed to load data. Please refresh.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // ── Theme tokens (mirrors CustomerPage) ─────────────────────────────────────
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  // ── Theme tokens ─────────────────────────────────────────────────────────────
   const D = dark;
-  const bg     = D ? 'bg-slate-950'  : 'bg-slate-50';
-  const card   = D ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
-  const text   = D ? 'text-slate-100' : 'text-slate-800';
-  const muted  = D ? 'text-slate-400' : 'text-slate-500';
+  const bg = D ? 'bg-slate-950' : 'bg-slate-50';
+  const card = D ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
+  const text = D ? 'text-slate-100' : 'text-slate-800';
+  const muted = D ? 'text-slate-400' : 'text-slate-500';
   const border = D ? 'border-slate-800' : 'border-slate-200';
-  const hov    = D ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50';
-  const inp    = D
+  const inp = D
     ? 'bg-slate-800 border-slate-700 text-slate-100 placeholder-slate-500 focus:border-blue-500'
     : 'bg-white border-slate-300 text-slate-800 focus:border-blue-500';
-  const theadBg  = D ? 'bg-slate-800'   : 'bg-slate-50';
+  const theadBg = D ? 'bg-slate-800' : 'bg-slate-50';
   const theadTxt = D ? 'text-slate-400' : 'text-slate-600';
-  const rowHov   = D ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50';
+  const rowHov = D ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50';
   const rowBorder = D ? 'border-slate-800' : 'border-slate-100';
 
-  // ── Logout ──────────────────────────────────────────────────────────────────
+  // ── Logout ───────────────────────────────────────────────────────────────────
   const handleLogout = async () => {
     await API.post('logout/');
     navigate('/');
   };
 
-  // ── Status helpers ───────────────────────────────────────────────────────────
-  const updateDeliveryStatus = (orderId, newStatus) =>
-    setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+  // ── Order status update ──────────────────────────────────────────────────────
+  const updateOrderStatus = async (orderId, newStatus) => {
+    try {
+      await API.patch(`orders/${orderId}/status/`, { status: newStatus });
+      setOrders(prev => prev.map(o =>
+        o.id === orderId ? { ...o, status: newStatus } : o
+      ));
+    } catch (err) {
+      console.error('Failed to update order status:', err.response?.data || err);
+      alert('Failed to update order status.');
+    }
+  };
 
-  const updateOrderStatus = (orderId, newStatus) =>
-    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+  // Delivery card complete → mark Delivered
+  const handleDeliveryComplete = (orderId) => updateOrderStatus(orderId, 'Delivered');
 
-  // ── Jug type handlers ────────────────────────────────────────────────────────
-  const handleAddJugType = (newJugType) => {
-    const jugTypeWithId = {
-      ...newJugType,
-      id: Date.now(),
-      purchasePrice: `₱${newJugType.purchasePrice}`,
-      refillPrice: `₱${newJugType.refillPrice}`,
-    };
-    setJugTypes(prev => [...prev, jugTypeWithId]);
-    setIsAddJugTypeModalOpen(false);
+  // ── Jug type CRUD ────────────────────────────────────────────────────────────
+  const handleAddJugType = async (formData) => {
+    try {
+      const payload = new FormData();
+      payload.append('type_name', formData.typeName);
+      payload.append('gallon_capacity', formData.capacity);
+      payload.append('purchase_price', formData.purchasePrice);
+      payload.append('refill_price', formData.refillPrice);
+      payload.append('description', formData.description || '');
+      payload.append('is_available', formData.isAvailable ? 'true' : 'false');
+      if (formData.image) payload.append('image', formData.image);
+
+      await API.post('jug-types/', payload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const res = await API.get('jug-types/');
+      setJugTypes(res.data);
+      setIsAddJugTypeModalOpen(false);
+    } catch (err) {
+      console.error('Failed to add jug type:', err.response?.data || err);
+      alert('Failed to save jug type. Check fields and try again.');
+    }
   };
 
   const handleEditJugType = (jugType) => {
@@ -133,16 +163,36 @@ export function AdminDashboard() {
     setIsEditJugTypeModalOpen(true);
   };
 
-  const handleSaveEditJugType = (updatedJugType) => {
+  const handleSaveEditJugType = (updatedForm) => {
+    setJugTypeToEdit(updatedForm);
     setIsEditConfirmOpen(true);
-    setJugTypeToEdit(updatedJugType);
   };
 
-  const confirmEditJugType = () => {
-    setJugTypes(prev => prev.map(jug => jug.id === jugTypeToEdit.id ? jugTypeToEdit : jug));
-    setIsEditJugTypeModalOpen(false);
-    setSelectedJugType(null);
-    setJugTypeToEdit(null);
+  const confirmEditJugType = async () => {
+    if (!jugTypeToEdit) return;
+    try {
+      const payload = new FormData();
+      payload.append('type_name', jugTypeToEdit.typeName ?? jugTypeToEdit.type_name ?? '');
+      payload.append('gallon_capacity', jugTypeToEdit.capacity ?? jugTypeToEdit.gallon_capacity ?? '');
+      payload.append('purchase_price', jugTypeToEdit.purchasePrice ?? jugTypeToEdit.purchase_price ?? '');
+      payload.append('refill_price', jugTypeToEdit.refillPrice ?? jugTypeToEdit.refill_price ?? '');
+      payload.append('description', jugTypeToEdit.description ?? '');
+      payload.append('is_available', (jugTypeToEdit.isAvailable ?? jugTypeToEdit.is_available) ? 'true' : 'false');
+      if (jugTypeToEdit.image) payload.append('image', jugTypeToEdit.image);
+
+      await API.put(`jug-types/${selectedJugType.id}/`, payload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const res = await API.get('jug-types/');
+      setJugTypes(res.data);
+      setIsEditJugTypeModalOpen(false);
+      setIsEditConfirmOpen(false);
+      setSelectedJugType(null);
+      setJugTypeToEdit(null);
+    } catch (err) {
+      console.error('Failed to update jug type:', err.response?.data || err);
+      alert('Failed to update jug type.');
+    }
   };
 
   const handleDeleteJugType = (jugType) => {
@@ -150,33 +200,61 @@ export function AdminDashboard() {
     setIsDeleteConfirmOpen(true);
   };
 
-  const confirmDeleteJugType = () => {
-    setJugTypes(prev => prev.filter(jug => jug.id !== jugTypeToDelete.id));
-    setJugTypeToDelete(null);
+  const confirmDeleteJugType = async () => {
+    if (!jugTypeToDelete) return;
+    try {
+      await API.delete(`jug-types/${jugTypeToDelete.id}/`);
+      setJugTypes(prev => prev.filter(jt => jt.id !== jugTypeToDelete.id));
+      setJugTypeToDelete(null);
+      setIsDeleteConfirmOpen(false);
+    } catch (err) {
+      console.error('Failed to delete jug type:', err.response?.data || err);
+      alert('Failed to delete jug type. It may be referenced by existing orders.');
+    }
   };
 
-  // ── Tab renderers ────────────────────────────────────────────────────────────
+  // ── Tab renderers ─────────────────────────────────────────────────────────────
+
   const renderDashboard = () => (
     <div className="space-y-6">
+      {/* Stats row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {jugStatusData.map(s => (
+          <div key={s.name} className={`p-6 rounded-xl border shadow-sm ${card}`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-sm ${muted}`}>{s.name} Jugs</span>
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }} />
+            </div>
+            <div className={`text-3xl font-black ${text}`}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
       {/* Active Deliveries Summary */}
       <div className={`p-6 rounded-xl border shadow-sm ${card}`}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className={`text-lg ${text}`}>Active Deliveries Today</h3>
-          <span className="text-sm px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
-            {activeOrders.filter(o => o.status !== 'completed').length} pending
+          <h3 className={`text-lg font-bold ${text}`}>Active Deliveries Today</h3>
+          <span className="text-sm px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-semibold">
+            {activeOrders.length} pending
           </span>
         </div>
-        <div className="space-y-3">
-          {activeOrders.slice(0, 3).map((order) => (
-            <div key={order.id} className={`flex items-center justify-between p-3 rounded-lg ${D ? 'bg-slate-800' : 'bg-slate-50'}`}>
-              <div>
-                <div className={`text-sm ${text}`}>{order.id} — {order.customer}</div>
-                <div className={`text-xs ${muted}`}>{order.address}</div>
+        {loading ? (
+          <div className={`text-sm ${muted}`}>Loading…</div>
+        ) : activeOrders.length === 0 ? (
+          <div className={`text-sm ${muted}`}>No active orders right now.</div>
+        ) : (
+          <div className="space-y-3">
+            {activeOrders.slice(0, 3).map((order) => (
+              <div key={order.id} className={`flex items-center justify-between p-3 rounded-lg ${D ? 'bg-slate-800' : 'bg-slate-50'}`}>
+                <div>
+                  <div className={`text-sm font-mono font-bold ${text}`}>#{order.id} — {order.customer_name || order.customer_email}</div>
+                  <div className={`text-xs ${muted}`}>{order.delivery_address_snapshot}</div>
+                </div>
+                <OrderStatusBadge status={order.status} />
               </div>
-              <OrderStatusBadge status={order.status} />
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
         <button
           onClick={() => setActiveTab('deliveries')}
           className="mt-4 w-full text-center text-sm text-blue-600 hover:text-blue-700 py-2 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
@@ -185,27 +263,29 @@ export function AdminDashboard() {
         </button>
       </div>
 
-      {/* Recent Alerts */}
+      {/* Recent Orders Summary */}
       <div className={`p-6 rounded-xl border shadow-sm ${card}`}>
-        <h3 className={`text-lg mb-4 ${text}`}>Recent Alerts</h3>
-        <div className="space-y-3">
-          <div className={`flex items-start gap-3 p-3 rounded-lg border ${D ? 'bg-red-900/20 border-red-800/50' : 'bg-red-50 border-red-200'}`}>
-            <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" />
-            <div className="flex-1">
-              <div className={`text-sm ${text}`}>High number of lost jugs in Quezon City area</div>
-              <div className={`text-xs mt-1 ${muted}`}>15 jugs reported lost in the past 7 days</div>
+        <h3 className={`text-lg font-bold mb-4 ${text}`}>Recent Orders</h3>
+        <div className="space-y-2">
+          {orders.slice(0, 5).map(o => (
+            <div key={o.id} className={`flex items-center justify-between p-3 rounded-lg ${D ? 'bg-slate-800' : 'bg-slate-50'}`}>
+              <div>
+                <span className={`text-sm font-mono font-bold ${text}`}>#{o.id}</span>
+                <span className={`text-xs ml-2 ${muted}`}>{o.customer_name || o.customer_email}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`text-sm font-bold ${text}`}>₱{o.price_snapshot}</span>
+                <OrderStatusBadge status={o.status} />
+              </div>
             </div>
-            <div className={`text-xs ${muted}`}>2h ago</div>
-          </div>
-          <div className={`flex items-start gap-3 p-3 rounded-lg border ${D ? 'bg-orange-900/20 border-orange-800/50' : 'bg-orange-50 border-orange-200'}`}>
-            <Clock className="w-5 h-5 text-orange-500 mt-0.5" />
-            <div className="flex-1">
-              <div className={`text-sm ${text}`}>3 delayed deliveries today</div>
-              <div className={`text-xs mt-1 ${muted}`}>Average delay: 35 minutes</div>
-            </div>
-            <div className={`text-xs ${muted}`}>4h ago</div>
-          </div>
+          ))}
         </div>
+        <button
+          onClick={() => setActiveTab('orders')}
+          className="mt-4 w-full text-center text-sm text-blue-600 hover:text-blue-700 py-2 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
+        >
+          View All Orders →
+        </button>
       </div>
     </div>
   );
@@ -213,27 +293,31 @@ export function AdminDashboard() {
   const renderDeliveries = () => (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className={`text-xl ${text}`}>Active Deliveries</h2>
-        <span className={`text-sm ${muted}`}>
-          {activeOrders.filter(o => o.status !== 'completed').length} pending tasks
-        </span>
+        <h2 className={`text-xl font-bold ${text}`}>Active Deliveries</h2>
+        <span className={`text-sm ${muted}`}>{activeOrders.length} pending tasks</span>
       </div>
 
-      {activeOrders.filter(o => o.status !== 'completed').map((order) => (
-        <DeliveryCard
-          key={order.id}
-          order={order}
-          onStatusUpdate={updateDeliveryStatus}
-          onComplete={(id) => updateDeliveryStatus(id, 'completed')}
-        />
-      ))}
-
-      {activeOrders.filter(o => o.status !== 'completed').length === 0 && (
+      {loading ? (
+        <div className={`p-12 rounded-xl border text-center ${card}`}>
+          <RefreshCw className={`w-10 h-10 mx-auto mb-3 animate-spin ${muted}`} />
+          <p className={muted}>Loading orders…</p>
+        </div>
+      ) : activeOrders.length === 0 ? (
         <div className={`p-12 rounded-xl border text-center ${card}`}>
           <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
           <h3 className={`text-lg mb-2 ${text}`}>All Caught Up!</h3>
           <p className={muted}>No active deliveries at the moment</p>
         </div>
+      ) : (
+        activeOrders.map((order) => (
+          <DeliveryCard
+            key={order.id}
+            order={order}
+            dark={dark}
+            onStatusUpdate={updateOrderStatus}
+            onComplete={handleDeliveryComplete}
+          />
+        ))
       )}
     </div>
   );
@@ -246,15 +330,19 @@ export function AdminDashboard() {
             <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${muted}`} />
             <input
               type="text"
-              placeholder="Search orders..."
+              placeholder="Search by order ID or customer name…"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${inp}`}
             />
           </div>
-          <button className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors border ${D ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}>
-            <Filter className="w-4 h-4" />
-            Filter
+          <button
+            onClick={loadAll}
+            title="Refresh"
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors border ${D ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
           </button>
         </div>
       </div>
@@ -267,36 +355,41 @@ export function AdminDashboard() {
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Order ID</th>
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Customer</th>
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Status</th>
-                <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Price</th>
+                <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Amount</th>
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Date</th>
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Update Status</th>
               </tr>
             </thead>
             <tbody>
-              {allOrders
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className={`py-12 text-center text-sm ${muted}`}>Loading…</td>
+                </tr>
+              ) : orders
                 .filter(o =>
                   !searchTerm ||
-                  o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                  o.customer.toLowerCase().includes(searchTerm.toLowerCase())
+                  String(o.id).includes(searchTerm) ||
+                  (o.customer_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  (o.customer_email || '').toLowerCase().includes(searchTerm.toLowerCase())
                 )
                 .map((order) => (
                   <tr key={order.id} className={`border-b ${rowBorder} ${rowHov}`}>
-                    <td className={`py-3 px-4 text-sm ${text}`}>{order.id}</td>
-                    <td className={`py-3 px-4 text-sm ${text}`}>{order.customer}</td>
+                    <td className={`py-3 px-4 text-sm font-mono font-bold ${text}`}>#{order.id}</td>
+                    <td className={`py-3 px-4 text-sm ${text}`}>{order.customer_name || order.customer_email}</td>
                     <td className="py-3 px-4"><OrderStatusBadge status={order.status} /></td>
-                    <td className={`py-3 px-4 text-sm ${text}`}>{order.price}</td>
-                    <td className={`py-3 px-4 text-sm ${muted}`}>{order.date}</td>
+                    <td className={`py-3 px-4 text-sm font-semibold ${text}`}>₱{order.price_snapshot}</td>
+                    <td className={`py-3 px-4 text-sm ${muted}`}>
+                      {order.created_at ? new Date(order.created_at).toLocaleString() : '—'}
+                    </td>
                     <td className="py-3 px-4">
                       <select
                         value={order.status}
                         onChange={(e) => updateOrderStatus(order.id, e.target.value)}
                         className={`text-xs border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 ${inp}`}
                       >
-                        <option>Pending</option>
-                        <option>Driver on the way to pick up</option>
-                        <option>Refilling</option>
-                        <option>On the way</option>
-                        <option>Delivered</option>
+                        {ORDER_STATUS_OPTIONS.map(s => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
                       </select>
                     </td>
                   </tr>
@@ -308,77 +401,90 @@ export function AdminDashboard() {
     </div>
   );
 
-  const renderHistory = () => (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard label="Completed Today" value="3"   subtext="₱185 collected"   subtextColor="text-green-600" icon={CheckCircle} iconColor="text-green-600"  />
-        <StatCard label="This Week"       value="32"  subtext="₱2,640 collected" subtextColor="text-blue-600"  icon={History}     iconColor="text-blue-600"   />
-        <StatCard label="Success Rate"    value="97%" subtext="2 delays this week"                              icon={CheckCircle} iconColor="text-purple-600" />
-      </div>
+  const renderHistory = () => {
+    const totalRevenue = historyOrders.reduce((sum, o) => sum + parseFloat(o.price_snapshot || 0), 0);
 
-      <div className={`rounded-xl border shadow-sm overflow-hidden ${card}`}>
-        <div className={`p-4 border-b flex items-center justify-between ${border}`}>
-          <h3 className={`text-lg ${text}`}>Delivery History</h3>
-          <button className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors border ${D ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}>
-            <Calendar className="w-4 h-4" />
-            Export
-          </button>
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatCard
+            label="Completed"
+            value={historyOrders.length}
+            subtext={`₱${totalRevenue.toFixed(2)} collected`}
+            subtextColor="text-green-600"
+            icon={CheckCircle}
+            iconColor="text-green-600"
+          />
+          <StatCard
+            label="Total Orders"
+            value={orders.length}
+            subtext={`${activeOrders.length} still active`}
+            subtextColor="text-blue-600"
+            icon={History}
+            iconColor="text-blue-600"
+          />
+          <StatCard
+            label="Completion Rate"
+            value={orders.length > 0 ? `${Math.round((historyOrders.length / orders.length) * 100)}%` : '—'}
+            icon={CheckCircle}
+            iconColor="text-purple-600"
+          />
         </div>
-        <div className={`divide-y ${D ? 'divide-slate-800' : 'divide-slate-100'}`}>
-          {mockHistory.map((entry) => (
-            <div key={entry.id} className={`flex items-center justify-between p-4 ${rowHov}`}>
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-full ${D ? 'bg-green-900/40' : 'bg-green-100'}`}>
-                  <CheckCircle className="w-5 h-5 text-green-600" />
+
+        <div className={`rounded-xl border shadow-sm overflow-hidden ${card}`}>
+          <div className={`p-4 border-b flex items-center justify-between ${border}`}>
+            <h3 className={`text-lg font-bold ${text}`}>Delivery History</h3>
+          </div>
+          <div className={`divide-y ${D ? 'divide-slate-800' : 'divide-slate-100'}`}>
+            {historyOrders.length === 0 ? (
+              <div className={`py-12 text-center text-sm ${muted}`}>No delivered orders yet.</div>
+            ) : historyOrders.map((order) => (
+              <div key={order.id} className={`flex items-center justify-between p-4 ${rowHov}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-full ${D ? 'bg-green-900/40' : 'bg-green-100'}`}>
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <div className={`text-sm font-mono font-bold ${text}`}>
+                      #{order.id} — {order.customer_name || order.customer_email}
+                    </div>
+                    <div className={`text-xs ${muted}`}>
+                      {order.items?.[0]?.item_type ?? 'Order'} ·{' '}
+                      {order.actual_arrival
+                        ? new Date(order.actual_arrival).toLocaleString()
+                        : order.completed_at
+                          ? new Date(order.completed_at).toLocaleString()
+                          : new Date(order.updated_at).toLocaleString()}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <div className={`text-sm ${text}`}>{entry.id} — {entry.customer}</div>
-                  <div className={`text-xs ${muted}`}>{entry.type} · {entry.time} · {entry.date}</div>
-                </div>
+                <div className={`text-sm font-semibold ${text}`}>₱{order.price_snapshot}</div>
               </div>
-              <div className={`text-sm font-semibold ${text}`}>{entry.price}</div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderJugs = () => (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {jugStatusData.map((status) => (
-          <div key={status.name} className={`p-6 rounded-xl border shadow-sm ${card}`}>
+        {jugStatusData.map((s) => (
+          <div key={s.name} className={`p-6 rounded-xl border shadow-sm ${card}`}>
             <div className="flex items-center justify-between mb-2">
-              <span className={`text-sm ${muted}`}>{status.name} Jugs</span>
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: status.color }} />
+              <span className={`text-sm ${muted}`}>{s.name} Jugs</span>
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }} />
             </div>
-            <div className={`text-3xl ${text}`}>{status.value}</div>
+            <div className={`text-3xl font-black ${text}`}>{s.value}</div>
           </div>
         ))}
-      </div>
-
-      <div className={`p-4 rounded-xl border shadow-sm ${card}`}>
-        <div className="flex gap-4">
-          <div className="flex-1 relative">
-            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${muted}`} />
-            <input
-              type="text"
-              placeholder="Search by Jug ID..."
-              className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${inp}`}
-            />
-          </div>
-          <button className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors border ${D ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}>
-            <Filter className="w-4 h-4" />
-            Filter by Status
-          </button>
-        </div>
       </div>
 
       {/* Jug Types Section */}
       <div className={`p-6 rounded-xl border shadow-sm ${card}`}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className={`text-lg ${text}`}>Jug Types</h3>
+          <h3 className={`text-lg font-bold ${text}`}>Jug Types</h3>
           <button
             onClick={() => setIsAddJugTypeModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
@@ -393,7 +499,7 @@ export function AdminDashboard() {
             <thead>
               <tr className={`border-b ${theadBg} ${border}`}>
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Type Name</th>
-                <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Capacity</th>
+                <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Capacity (gal)</th>
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Purchase Price</th>
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Refill Price</th>
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Status</th>
@@ -401,21 +507,25 @@ export function AdminDashboard() {
               </tr>
             </thead>
             <tbody>
-              {jugTypes.map((jugType) => (
-                <tr key={jugType.id} className={`border-b ${rowBorder} ${rowHov}`}>
-                  <td className={`py-3 px-4 text-sm ${text}`}>{jugType.typeName}</td>
-                  <td className={`py-3 px-4 text-sm ${text}`}>{jugType.capacity}</td>
-                  <td className={`py-3 px-4 text-sm ${text}`}>{jugType.purchasePrice}</td>
-                  <td className={`py-3 px-4 text-sm ${text}`}>{jugType.refillPrice}</td>
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className={`py-12 text-center text-sm ${muted}`}>Loading…</td>
+                </tr>
+              ) : jugTypes.map((jt) => (
+                <tr key={jt.id} className={`border-b ${rowBorder} ${rowHov}`}>
+                  <td className={`py-3 px-4 text-sm font-semibold ${text}`}>{jt.type_name}</td>
+                  <td className={`py-3 px-4 text-sm ${text}`}>{jt.gallon_capacity}</td>
+                  <td className={`py-3 px-4 text-sm ${text}`}>₱{jt.purchase_price}</td>
+                  <td className={`py-3 px-4 text-sm ${text}`}>₱{jt.refill_price}</td>
                   <td className="py-3 px-4">
-                    <span className={`text-xs px-2 py-1 rounded-full ${jugType.isAvailable ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                      {jugType.isAvailable ? 'Available' : 'Unavailable'}
+                    <span className={`text-xs px-2 py-1 rounded-full font-semibold ${jt.is_available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {jt.is_available ? 'Available' : 'Unavailable'}
                     </span>
                   </td>
                   <td className="py-3 px-4">
                     <RowActionMenu
-                      onEdit={() => handleEditJugType(jugType)}
-                      onDelete={() => handleDeleteJugType(jugType)}
+                      onEdit={() => handleEditJugType(jt)}
+                      onDelete={() => handleDeleteJugType(jt)}
                     />
                   </td>
                 </tr>
@@ -424,7 +534,7 @@ export function AdminDashboard() {
           </table>
         </div>
 
-        {jugTypes.length === 0 && (
+        {jugTypes.length === 0 && !loading && (
           <div className="text-center py-8">
             <p className={`mb-4 ${muted}`}>No jug types added yet</p>
             <button onClick={() => setIsAddJugTypeModalOpen(true)} className="text-blue-600 hover:text-blue-700 font-medium">
@@ -434,47 +544,71 @@ export function AdminDashboard() {
         )}
       </div>
 
-      <AddJugTypeModal isOpen={isAddJugTypeModalOpen} onClose={() => setIsAddJugTypeModalOpen(false)} onSave={handleAddJugType} dark={dark} />
+      <AddJugTypeModal
+        isOpen={isAddJugTypeModalOpen}
+        onClose={() => setIsAddJugTypeModalOpen(false)}
+        onSave={handleAddJugType}
+        dark={dark}
+        theme={{ muted, inp, D }}
+      />
       <EditJugTypeModal
         isOpen={isEditJugTypeModalOpen}
         onClose={() => { setIsEditJugTypeModalOpen(false); setSelectedJugType(null); setJugTypeToEdit(null); }}
         onSave={handleSaveEditJugType}
         jugType={selectedJugType}
         dark={dark}
+        theme={{ muted, inp, D }}
       />
-      <ConfirmDialog isOpen={isEditConfirmOpen} onClose={() => setIsEditConfirmOpen(false)} onConfirm={confirmEditJugType} title="Confirm Changes" message="Are you sure you want to save these changes to the jug type?" confirmText="Save Changes" cancelText="Cancel" isDangerous={false} dark={dark} />
-      <ConfirmDialog isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={confirmDeleteJugType} title="Delete Jug Type" message={`Are you sure you want to delete "${jugTypeToDelete?.typeName}"? This action cannot be undone.`} confirmText="Delete" cancelText="Cancel" isDangerous={true} dark={dark} />
+      <ConfirmDialog
+        isOpen={isEditConfirmOpen}
+        onClose={() => setIsEditConfirmOpen(false)}
+        onConfirm={confirmEditJugType}
+        title="Confirm Changes"
+        message="Save these changes to the jug type?"
+        confirmText="Save Changes"
+        cancelText="Cancel"
+        isDangerous={false}
+        dark={dark}
+      />
+      <ConfirmDialog
+        isOpen={isDeleteConfirmOpen}
+        onClose={() => setIsDeleteConfirmOpen(false)}
+        onConfirm={confirmDeleteJugType}
+        title="Delete Jug Type"
+        message={`Are you sure you want to delete "${jugTypeToDelete?.type_name}"? This cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        dark={dark}
+      />
     </div>
   );
 
   const renderAuditLogs = () => {
     const actionColors = {
       'Order Status Changed': 'bg-blue-100 text-blue-700',
-      'Jug Type Created':     'bg-green-100 text-green-700',
-      'Jug Type Updated':     'bg-yellow-100 text-yellow-700',
-      'Jug Type Deleted':     'bg-red-100 text-red-700',
-      'Customer Created':     'bg-green-100 text-green-700',
-      'Customer Updated':     'bg-yellow-100 text-yellow-700',
-      'Customer Deleted':     'bg-red-100 text-red-700',
-      'Login':                'bg-slate-100 text-slate-600',
-      'Logout':               'bg-slate-100 text-slate-600',
+      'Jug Type Created': 'bg-green-100 text-green-700',
+      'Jug Type Updated': 'bg-yellow-100 text-yellow-700',
+      'Jug Type Deleted': 'bg-red-100 text-red-700',
+      'Customer Created': 'bg-green-100 text-green-700',
+      'Customer Updated': 'bg-yellow-100 text-yellow-700',
+      'Customer Deleted': 'bg-red-100 text-red-700',
+      'Login': 'bg-slate-100 text-slate-600',
+      'Logout': 'bg-slate-100 text-slate-600',
     };
-
     const resourceTypeColors = {
-      'Order':   'bg-indigo-50 text-indigo-700',
+      'Order': 'bg-indigo-50 text-indigo-700',
       'JugType': 'bg-cyan-50 text-cyan-700',
-      'User':    'bg-purple-50 text-purple-700',
-      'Auth':    'bg-slate-50 text-slate-600',
+      'User': 'bg-purple-50 text-purple-700',
+      'Auth': 'bg-slate-50 text-slate-600',
     };
 
-    const filtered = mockAuditLogs
-      .filter(log =>
-        !auditSearchTerm ||
-        log.resourceId.toLowerCase().includes(auditSearchTerm.toLowerCase()) ||
-        log.admin.toLowerCase().includes(auditSearchTerm.toLowerCase()) ||
-        log.action.toLowerCase().includes(auditSearchTerm.toLowerCase())
-      )
-      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    const filtered = auditLogs.filter(log =>
+      !auditSearchTerm ||
+      String(log.resource_id || '').toLowerCase().includes(auditSearchTerm.toLowerCase()) ||
+      (log.admin_email || '').toLowerCase().includes(auditSearchTerm.toLowerCase()) ||
+      (log.action_display || log.action || '').toLowerCase().includes(auditSearchTerm.toLowerCase())
+    );
 
     return (
       <div className="space-y-4">
@@ -484,7 +618,7 @@ export function AdminDashboard() {
               <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${muted}`} />
               <input
                 type="text"
-                placeholder="Search by action, resource ID, or admin user..."
+                placeholder="Search by action, resource ID, or admin user…"
                 value={auditSearchTerm}
                 onChange={(e) => setAuditSearchTerm(e.target.value)}
                 className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${inp}`}
@@ -499,17 +633,13 @@ export function AdminDashboard() {
 
         <div className={`rounded-xl border shadow-sm overflow-hidden ${card}`}>
           <div className={`p-4 border-b flex items-center justify-between ${border}`}>
-            <h3 className={`text-lg ${text}`}>Admin Audit Logs</h3>
-            <button className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors border ${D ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}>
-              <Calendar className="w-4 h-4" />
-              Export
-            </button>
+            <h3 className={`text-lg font-bold ${text}`}>Admin Audit Logs</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className={`border-b ${theadBg} ${border}`}>
-                  <th className={`text-left py-3 px-4 text-sm whitespace-nowrap ${theadTxt}`}>Date & Time</th>
+                  <th className={`text-left py-3 px-4 text-sm whitespace-nowrap ${theadTxt}`}>Date &amp; Time</th>
                   <th className={`text-left py-3 px-4 text-sm whitespace-nowrap ${theadTxt}`}>Admin User</th>
                   <th className={`text-left py-3 px-4 text-sm whitespace-nowrap ${theadTxt}`}>Action</th>
                   <th className={`text-left py-3 px-4 text-sm whitespace-nowrap ${theadTxt}`}>Resource Type</th>
@@ -517,21 +647,27 @@ export function AdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length > 0 ? filtered.map((log) => (
+                {loading ? (
+                  <tr><td colSpan={5} className={`py-12 text-center text-sm ${muted}`}>Loading…</td></tr>
+                ) : filtered.length > 0 ? filtered.map((log) => (
                   <tr key={log.id} className={`border-b ${rowBorder} ${rowHov}`}>
-                    <td className={`py-3 px-4 text-sm whitespace-nowrap ${muted}`}>{log.timestamp}</td>
-                    <td className={`py-3 px-4 text-sm ${text}`}>{log.admin}</td>
+                    <td className={`py-3 px-4 text-sm whitespace-nowrap ${muted}`}>
+                      {log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}
+                    </td>
+                    <td className={`py-3 px-4 text-sm ${text}`}>{log.admin_email || '—'}</td>
                     <td className="py-3 px-4">
-                      <span className={`text-xs px-2 py-1 rounded-full ${actionColors[log.action] ?? 'bg-slate-100 text-slate-600'}`}>
-                        {log.action}
+                      <span className={`text-xs px-2 py-1 rounded-full font-semibold ${actionColors[log.action_display || log.action] ?? 'bg-slate-100 text-slate-600'}`}>
+                        {log.action_display || log.action}
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`text-xs px-2 py-1 rounded-full ${resourceTypeColors[log.resourceType] ?? 'bg-slate-100 text-slate-600'}`}>
-                        {log.resourceType}
+                      <span className={`text-xs px-2 py-1 rounded-full font-semibold ${resourceTypeColors[log.resource_type] ?? 'bg-slate-100 text-slate-600'}`}>
+                        {log.resource_type}
                       </span>
                     </td>
-                    <td className={`py-3 px-4 text-sm font-mono font-semibold ${text}`}>{log.resourceId}</td>
+                    <td className={`py-3 px-4 text-sm font-mono font-semibold ${text}`}>
+                      {log.resource_id ?? '—'}
+                    </td>
                   </tr>
                 )) : (
                   <tr>
@@ -549,12 +685,12 @@ export function AdminDashboard() {
   };
 
   const tabs = [
-    { id: 'dashboard',  label: 'Dashboard',        icon: Droplets   },
+    { id: 'dashboard', label: 'Dashboard', icon: Droplets },
     { id: 'deliveries', label: 'Active Deliveries', icon: Navigation },
-    { id: 'orders',     label: 'Orders',            icon: Package    },
-    { id: 'history',    label: 'History',           icon: History    },
-    { id: 'jugs',       label: 'Jug Inventory',     icon: Droplets   },
-    { id: 'audit',      label: 'Audit Logs',        icon: FileText   },
+    { id: 'orders', label: 'Orders', icon: Package },
+    { id: 'history', label: 'History', icon: History },
+    { id: 'jugs', label: 'Jug Inventory', icon: Droplets },
+    { id: 'audit', label: 'Audit Logs', icon: FileText },
   ];
 
   return (
@@ -570,15 +706,13 @@ export function AdminDashboard() {
               <Droplets className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className={`text-xl ${text}`}>Aquaduct</h1>
+              <h1 className={`text-xl font-black ${text}`}>Aquaduct</h1>
               <p className={`text-sm ${muted}`}>Business Dashboard</p>
             </div>
           </div>
 
-          {/* Right controls — all in one flex row */}
+          {/* Right controls */}
           <div className="flex items-center gap-2 flex-shrink-0">
-
-            {/* Dark mode toggle */}
             <button
               onClick={() => setDark(v => !v)}
               title={D ? 'Light mode' : 'Dark mode'}
@@ -634,14 +768,18 @@ export function AdminDashboard() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600'
-                    : `border-transparent ${muted} hover:${text}`
-                }`}
+                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.id
+                  ? 'border-blue-600 text-blue-600'
+                  : `border-transparent ${muted} hover:${text}`
+                  }`}
               >
                 <tab.icon className="w-4 h-4" />
                 {tab.label}
+                {tab.id === 'deliveries' && activeOrders.length > 0 && (
+                  <span className="ml-1 text-xs bg-blue-600 text-white rounded-full px-1.5 py-0.5 font-bold">
+                    {activeOrders.length}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -650,12 +788,18 @@ export function AdminDashboard() {
 
       {/* ── CONTENT ─────────────────────────────────────────────────────── */}
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {activeTab === 'dashboard'  && renderDashboard()}
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            {error}
+          </div>
+        )}
+        {activeTab === 'dashboard' && renderDashboard()}
         {activeTab === 'deliveries' && renderDeliveries()}
-        {activeTab === 'orders'     && renderOrders()}
-        {activeTab === 'history'    && renderHistory()}
-        {activeTab === 'jugs'       && renderJugs()}
-        {activeTab === 'audit'      && renderAuditLogs()}
+        {activeTab === 'orders' && renderOrders()}
+        {activeTab === 'history' && renderHistory()}
+        {activeTab === 'jugs' && renderJugs()}
+        {activeTab === 'audit' && renderAuditLogs()}
       </div>
     </div>
   );

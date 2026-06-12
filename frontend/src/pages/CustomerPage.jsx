@@ -3,10 +3,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API from '../api';
 
-import Icon, { IC } from '../components/Icon';
-import StatusBadge from '../components/StatusBadge';
+import Icon, { IC } from '../components/MyIcons';
+import StatusBadge from '../components/Statusbadge';
 import Modal from '../components/Modal';
-import JugCard from '../components/Jugcard';
+import JugCard from '../components/JugCard';
 import ChatWidget from '../components/Chatwidget';
 import FrequencyEditModal from '../components/Frequencyeditmodal';
 import AddAddressModal from '../components/AddAddressModal';
@@ -49,7 +49,7 @@ export default function CustomerPage() {
       }));
       setJugs(transformed);
     });
-    API.get('orders/').then(res => setOrders(res.data)); 
+    API.get('orders/').then(res => setOrders(res.data));
   }, []);
 
   const [orders, setOrders] = useState([]);
@@ -60,6 +60,13 @@ export default function CustomerPage() {
   const [selectedJugType, setSelectedJugType] = useState(null);
   const [selectedJugForRefill, setSelectedJugForRefill] = useState(null);
   const [selectedAddress, setSelectedAddress] = useState(null);
+  const [selectedNewJugAddress, setSelectedNewJugAddress] = useState(null);
+
+  // Report modal
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportOrder, setReportOrder] = useState(null);
+  const [reportForm, setReportForm] = useState({ report_type: 'Not Delivered', description: '' });
+  const [reportSubmitting, setReportSubmitting] = useState(false);
 
   const [showFreqModal, setShowFreqModal] = useState(false);
   const [showFreqConfirm, setShowFreqConfirm] = useState(false);
@@ -256,7 +263,7 @@ export default function CustomerPage() {
               ))}
             </div>
           </div>
- 
+
           <div className={`rounded-2xl border p-6 ${card} space-y-4`}>
             <div className={`font-bold ${text}`}>Live Deliveries</div>
             {orders.filter(o => o.status === 'On The Way' || o.status === 'In Transit').length === 0 ? (
@@ -269,7 +276,7 @@ export default function CustomerPage() {
                     {o.items?.[0]?.item_type || 'Order'}
                   </div>
                   <div className={`text-xs mt-1 font-medium ${D ? 'text-amber-300' : 'text-amber-700'}`}>
-                    ETA {o.estimated_arrival ? new Date(o.estimated_arrival).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—'}
+                    ETA {o.estimated_arrival ? new Date(o.estimated_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
                   </div>
                 </div>
               ))
@@ -345,7 +352,16 @@ export default function CustomerPage() {
                       <td className="py-3.5 px-4"><StatusBadge status={o.status} dark={D} /></td>
                       <td className="py-3.5 px-4">
                         {o.status === 'Delivered' && (
-                          <button className="text-xs text-red-500 hover:text-red-400 font-medium hover:underline">Report</button>
+                          <button
+                            onClick={() => {
+                              setReportOrder(o);
+                              setReportForm({ report_type: 'Not Delivered', description: '' });
+                              setShowReportModal(true);
+                            }}
+                            className="text-xs text-red-500 hover:text-red-400 font-medium hover:underline"
+                          >
+                            Report
+                          </button>
                         )}
                       </td>
                     </tr>
@@ -382,8 +398,8 @@ export default function CustomerPage() {
   );
 
   const handleLogout = async () => {
-  await API.post('logout/');
-  navigate('/');
+    await API.post('logout/');
+    navigate('/');
   };
 
 
@@ -447,13 +463,13 @@ export default function CustomerPage() {
                   </div>
                 </div>
               </div>
-                <button
-                  onClick={() => {
-                    setEditingAddress(addr);
-                    setShowAddAddressModal(true);
-                  }}
-                  className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors text-blue-500 ${D ? 'hover:bg-slate-700' : 'hover:bg-blue-50'}`}
-                >Edit
+              <button
+                onClick={() => {
+                  setEditingAddress(addr);
+                  setShowAddAddressModal(true);
+                }}
+                className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors text-blue-500 ${D ? 'hover:bg-slate-700' : 'hover:bg-blue-50'}`}
+              >Edit
               </button>
             </div>
           ))}
@@ -602,7 +618,7 @@ export default function CustomerPage() {
           <div>
             <label className={`block text-xs font-bold uppercase tracking-wider mb-3 ${muted}`}>1. Select Jug</label>
             <div className="space-y-2">
-              {jugs.filter(j => j.status === 'ACTIVE').map(j => (
+              {jugs.filter(j => j.status === 'Active').map(j => (
                 <button key={j.id} onClick={() => setSelectedJugForRefill(j)}
                   className={`w-full p-4 rounded-xl border-2 text-left flex items-center gap-3 transition-all ${selectedJugForRefill === j.id
                     ? 'border-blue-500 ' + (D ? 'bg-blue-900/20' : 'bg-blue-50')
@@ -675,7 +691,7 @@ export default function CustomerPage() {
               : D ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
               }`}
           >
-            
+
             Confirm Refill Order
           </button>
         </div>
@@ -689,6 +705,30 @@ export default function CustomerPage() {
         dark={D}
       >
         <div className="p-6 space-y-3">
+          {/* Address picker for new jug */}
+          <div>
+            <label className={`block text-xs font-bold uppercase tracking-wider mb-3 ${muted}`}>1. Delivery Address</label>
+            <div className="space-y-2">
+              {addresses.map(addr => (
+                <button key={addr.id} onClick={() => setSelectedNewJugAddress(addr.id)}
+                  className={`w-full p-4 rounded-xl border-2 text-left flex items-start gap-3 transition-all ${selectedNewJugAddress === addr.id
+                    ? 'border-blue-500 ' + (D ? 'bg-blue-900/20' : 'bg-blue-50')
+                    : D ? 'border-slate-700 hover:border-slate-500' : 'border-slate-200 hover:border-blue-300'
+                    }`}>
+                  <Icon path={IC.map} className={`w-4 h-4 mt-0.5 flex-shrink-0 ${muted}`} />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm font-bold ${D ? 'text-white' : 'text-slate-800'}`}>{addr.label || addr.address_type}</span>
+                      {addr.is_default && <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">Default</span>}
+                    </div>
+                    <div className={`text-xs mt-0.5 leading-snug ${muted}`}>{addr.full_address}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className={`block text-xs font-bold uppercase tracking-wider mb-3 ${muted}`}>2. Select Container Type</label>
           {jugTypes.filter(jt => jt.is_available).map(jt => (
             <button key={jt.id} onClick={() => setSelectedJugType(jt.id)}
               className={`w-full p-5 rounded-xl border-2 text-left flex items-center gap-4 transition-all ${selectedJugType === jt.id
@@ -706,12 +746,12 @@ export default function CustomerPage() {
             </button>
           ))}
           <button
-            disabled={!selectedJugType}
+            disabled={!selectedJugType || !selectedNewJugAddress}
             onClick={async () => {
-              if (!selectedJugType || !addresses[0]?.id) return;
+              if (!selectedJugType || !selectedNewJugAddress) return;
               try {
                 await API.post('orders/', {
-                  address_id: addresses[0]?.id,
+                  address_id: selectedNewJugAddress,
                   items: [{ item_type: 'New Jug', jug_type_id: selectedJugType, quantity: 1 }],
                 });
                 const res = await API.get('orders/');
@@ -721,8 +761,9 @@ export default function CustomerPage() {
               }
               setShowNewJugModal(false);
               setSelectedJugType(null);
+              setSelectedNewJugAddress(null);
             }}
-            className={`w-full py-3.5 rounded-xl font-bold text-sm mt-2 transition-all ${selectedJugType
+            className={`w-full py-3.5 rounded-xl font-bold text-sm mt-2 transition-all ${selectedJugType && selectedNewJugAddress
               ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
               : D ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
               }`}
@@ -793,14 +834,14 @@ export default function CustomerPage() {
         dark={D}
         theme={theme}
         previewData={pendingAddressData ? [
-          { label: "Type",     value: pendingAddressData.address_type },
+          { label: "Type", value: pendingAddressData.address_type },
           ...(pendingAddressData.address_type === 'Apartment' ? [
-            { label: "Unit",     value: pendingAddressData.unit_number },
+            { label: "Unit", value: pendingAddressData.unit_number },
             { label: "Building", value: pendingAddressData.building_name || '—' },
           ] : []),
-          { label: "Street",   value: pendingAddressData.street_address },
+          { label: "Street", value: pendingAddressData.street_address },
           { label: "Barangay", value: pendingAddressData.barangay || '—' },
-          { label: "City",     value: "Quezon City" },
+          { label: "City", value: "Quezon City" },
           ...(pendingAddressData.is_default ? [{ label: "Default", extra: "Will be set as default" }] : []),
         ] : []}
       />
@@ -830,11 +871,95 @@ export default function CustomerPage() {
         dark={D}
         theme={theme}
         previewData={pendingProfileData ? [
-          { label: "Name",     value: pendingProfileData.name, mono: true },
+          { label: "Name", value: pendingProfileData.name, mono: true },
           { label: "Email Address", value: pendingProfileData.email, mono: true },
-          { label: "Phone Number",  value: pendingProfileData.phone, mono: true },
+          { label: "Phone Number", value: pendingProfileData.phone, mono: true },
         ] : []}
       />
+
+      {/* ── REPORT JUG MODAL ──────────────────────────────────────────── */}
+      <Modal
+        show={showReportModal}
+        onClose={() => { setShowReportModal(false); setReportOrder(null); }}
+        title="Report an Issue"
+        dark={D}
+        maxWidth="max-w-md"
+      >
+        <div className="p-6 space-y-5">
+          <p className={`text-sm ${muted}`}>
+            Reporting an issue for order <span className={`font-mono font-bold ${text}`}>#{reportOrder?.id}</span>.
+          </p>
+
+          <div>
+            <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${muted}`}>Issue Type</label>
+            <select
+              value={reportForm.report_type}
+              onChange={e => setReportForm(f => ({ ...f, report_type: e.target.value }))}
+              className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium outline-none transition-colors ${inp}`}
+            >
+              <option value="Not Delivered">Not Delivered</option>
+              <option value="Lost">Lost</option>
+              <option value="Broken">Broken</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${muted}`}>Description</label>
+            <textarea
+              rows={4}
+              placeholder="Describe the issue in detail…"
+              value={reportForm.description}
+              onChange={e => setReportForm(f => ({ ...f, description: e.target.value }))}
+              className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium outline-none transition-colors resize-none ${inp}`}
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setShowReportModal(false); setReportOrder(null); }}
+              className={`flex-1 py-2.5 rounded-xl border font-semibold text-sm transition-colors ${D ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+            >
+              Cancel
+            </button>
+            <button
+              disabled={!reportForm.description.trim() || reportSubmitting}
+              onClick={async () => {
+                if (!reportForm.description.trim() || !reportOrder) return;
+                // Find the first jug from the order items
+                const jugId = reportOrder.items?.[0]?.jug;
+                if (!jugId) {
+                  alert('No jug found for this order.');
+                  return;
+                }
+                setReportSubmitting(true);
+                try {
+                  await API.post('jug-reports/', {
+                    jug: jugId,
+                    report_type: reportForm.report_type,
+                    description: reportForm.description,
+                  });
+                  setShowReportModal(false);
+                  setReportOrder(null);
+                  setReportForm({ report_type: 'Not Delivered', description: '' });
+                  alert('Report submitted successfully. Our team will follow up.');
+                } catch (err) {
+                  console.error('Report failed:', err.response?.data || err);
+                  alert('Failed to submit report. Please try again.');
+                } finally {
+                  setReportSubmitting(false);
+                }
+              }}
+              className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all ${reportForm.description.trim() && !reportSubmitting
+                ? 'bg-red-600 hover:bg-red-700 text-white shadow-md'
+                : D ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
+            >
+              {reportSubmitting ? 'Submitting…' : 'Submit Report'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

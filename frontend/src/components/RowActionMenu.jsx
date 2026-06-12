@@ -1,6 +1,6 @@
 // RowActionMenu.jsx
 import { useRef, useEffect, useState } from 'react';
-import Icon, { IC } from './Icon.jsx';
+import Icon, { IC } from './MyIcons';
 
 export default function RowActionMenu({ onEdit, onDelete }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -10,9 +10,9 @@ export default function RowActionMenu({ onEdit, onDelete }) {
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (menuRef.current && buttonRef.current && 
-          !menuRef.current.contains(e.target) && 
-          !buttonRef.current.contains(e.target)) {
+      if (menuRef.current && buttonRef.current &&
+        !menuRef.current.contains(e.target) &&
+        !buttonRef.current.contains(e.target)) {
         setIsOpen(false);
       }
     };

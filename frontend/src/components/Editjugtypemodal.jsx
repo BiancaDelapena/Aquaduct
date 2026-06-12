@@ -15,14 +15,17 @@ export default function EditJugTypeModal({ isOpen, onClose, onSave, jugType, dar
 
   useEffect(() => {
     if (jugType && isOpen) {
+      // Support both API snake_case (from backend) and camelCase (legacy mock shape)
+      const rawPurchase = jugType.purchase_price ?? jugType.purchasePrice ?? '';
+      const rawRefill   = jugType.refill_price   ?? jugType.refillPrice   ?? '';
       setForm({
-        typeName: jugType.typeName || "",
-        capacity: jugType.capacity || "",
-        purchasePrice: jugType.purchasePrice?.replace("₱", "") || "",
-        refillPrice: jugType.refillPrice?.replace("₱", "") || "",
-        description: jugType.description || "",
+        typeName:      jugType.type_name      ?? jugType.typeName      ?? '',
+        capacity:      jugType.gallon_capacity ?? jugType.capacity      ?? '',
+        purchasePrice: String(rawPurchase).replace('₱', ''),
+        refillPrice:   String(rawRefill).replace('₱', ''),
+        description:   jugType.description ?? '',
         image: null,
-        isAvailable: jugType.isAvailable !== false,
+        isAvailable:   jugType.is_available ?? jugType.isAvailable ?? true,
       });
     }
   }, [jugType, isOpen]);

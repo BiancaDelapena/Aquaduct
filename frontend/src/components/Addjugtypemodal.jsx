@@ -148,14 +148,12 @@ export default function AddJugTypeModal({ isOpen, onClose, onSave, dark, theme }
           <button
             type="button"
             onClick={() => setForm((prev) => ({ ...prev, isAvailable: !prev.isAvailable }))}
-            className={`relative w-11 h-6 rounded-full transition-colors ${
-              form.isAvailable ? "bg-blue-600" : D ? "bg-slate-700" : "bg-slate-300"
-            }`}
+            className={`relative w-11 h-6 rounded-full transition-colors ${form.isAvailable ? "bg-blue-600" : D ? "bg-slate-700" : "bg-slate-300"
+              }`}
           >
             <span
-              className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                form.isAvailable ? "left-5" : "left-0.5"
-              }`}
+              className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transform transition-transform ${form.isAvailable ? "left-5" : "left-0.5"
+                }`}
             />
           </button>
         </div>
@@ -165,11 +163,10 @@ export default function AddJugTypeModal({ isOpen, onClose, onSave, dark, theme }
           <button
             type="button"
             onClick={onClose}
-            className={`flex-1 py-2.5 rounded-xl border font-semibold text-sm transition-colors ${
-              D
+            className={`flex-1 py-2.5 rounded-xl border font-semibold text-sm transition-colors ${D
                 ? "border-slate-700 text-slate-300 hover:bg-slate-800"
                 : "border-slate-300 text-slate-600 hover:bg-slate-50"
-            }`}
+              }`}
           >
             Cancel
           </button>
@@ -177,13 +174,12 @@ export default function AddJugTypeModal({ isOpen, onClose, onSave, dark, theme }
             type="button"
             onClick={handleSubmit}
             disabled={!isComplete}
-            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors ${
-              isComplete
+            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors ${isComplete
                 ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md"
                 : D
-                ? "bg-slate-800 text-slate-600 cursor-not-allowed"
-                : "bg-slate-200 text-slate-400 cursor-not-allowed"
-            }`}
+                  ? "bg-slate-800 text-slate-600 cursor-not-allowed"
+                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+              }`}
           >
             Save Jug Type
           </button>

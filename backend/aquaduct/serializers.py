@@ -2,6 +2,7 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 from django.utils import timezone
+# pyrefly: ignore [missing-import]
 from .models import (
     User, Address, ProfileChangeLog,
     JugType, Jug, RefillSchedule, Order, OrderItem,
@@ -189,12 +190,15 @@ class OrderStatusHistorySerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     customer_email = serializers.CharField(source='customer.email', read_only=True)
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    customer_phone = serializers.CharField(source='customer.phone_number', read_only=True)
     status_history = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
-            'id', 'customer', 'customer_email', 'status', 'order_source',
+            'id', 'customer', 'customer_email', 'customer_name', 'customer_phone',
+            'status', 'order_source',
             'delivery_address_snapshot', 'price_snapshot',
             'special_instructions', 'estimated_arrival', 'actual_arrival',
             'completed_at', 'created_at', 'updated_at',

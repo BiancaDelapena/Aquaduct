@@ -1,10 +1,10 @@
-// signuppage.jsx
-import { useState, useEffect } from "react";
+// Signuppage.jsx
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from '../api';
 import logo from "../assets/logoaqud.png";
 
-const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const validateEmail = (value) => emailRegex.test(value);
 
 const DropletIcon = () => (
@@ -95,7 +95,7 @@ export default function RegisterPage() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
-    name: "",
+    fullName: "",
     email: "",
     phone: "",
     address: "",
@@ -107,34 +107,19 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [emailError, setEmailError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [phoneError, setPhoneError] = useState("");
 
   const handleChange = (e) => {
-    const { name, value: rawValue } = e.target;
-    let value = rawValue;
-
-    if (name === 'email') {
+    let value = e.target.value;
+    if (e.target.name === 'email') {
       value = value.trim();
     }
-    if (name === 'phone') {
+    if (e.target.name === 'phone') {
       value = value.replace(/[A-Za-z]/g, '');
     }
-
-    setForm((prev) => ({ ...prev, [name]: value }));
-
-    if (name === 'email') {
-      setEmailError("");
-    }
-    if (name === 'password' || name === 'confirmPassword') {
+    setForm({ ...form, [e.target.name]: value });
+    if (e.target.name === 'email') setEmailError("");
+    if (e.target.name === 'password') {
       setError("");
-    }
-    if (name === 'phone') {
-      const phonePattern = /^\+?[0-9]{7,15}$/;
-      if (value.trim() && !phonePattern.test(value.replace(/\s/g, ''))) {
-        setPhoneError("Phone number must be 7–15 digits and can start with '+'");
-      } else {
-        setPhoneError("");
-      }
     }
   };
 
@@ -155,30 +140,14 @@ export default function RegisterPage() {
 
     const email = form.email.trim();
     if (!validateEmail(email)) {
-      setEmailError("Please enter a valid email address (e.g. name@example.com).");
+      setEmailError("Please enter a valid email address.");
       return;
     }
-
-    if (!form.phone.trim()) {
-      setError("Phone number is required.");
-      return;
-    }
-
-    if (!form.address.trim()) {
-      setError("Address is required.");
-      return;
-    }
-
-    const phonePattern = /^\+?[0-9]{7,15}$/;
-      if (!phonePattern.test(form.phone.replace(/\s/g, ''))) {
-        setPhoneError("Please enter a valid phone number (7–15 digits, optional +).");
-        return;
-      }
 
     setLoading(true);
     try {
       await API.post("register/", {
-        name: form.name,
+        full_name: form.fullName,
         email,
         phone: form.phone,
         address: form.address,
@@ -193,16 +162,6 @@ export default function RegisterPage() {
   };
 
   const passwordStatus = getPasswordRuleStatus(form.password);
-
-  useEffect(() => {
-    API.get('profile/')
-      .then(res => {
-        if (res.data.role === 'Admin') navigate('/admin-dashboard', { replace: true });
-        else navigate('/dashboard', { replace: true });
-      })
-      .catch(() => {
-      });
-  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-6">
@@ -251,18 +210,18 @@ export default function RegisterPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
 
-            {/* Name */}
+            {/* Full Name */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Name or Nickname</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Full Name</label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
                   <UserIcon />
                 </span>
                 <input
                   type="text"
-                  name="name"
-                  placeholder="Enter your Name or Nickname"
-                  value={form.name}
+                  name="fullName"
+                  placeholder="Enter your full name"
+                  value={form.fullName}
                   onChange={handleChange}
                   required
                   className="w-full pl-10 pr-4 py-3 border-2 border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 bg-slate-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
@@ -300,15 +259,14 @@ export default function RegisterPage() {
                 <input
                   type="tel"
                   inputMode="tel"
+                  pattern="[0-9+\-() ]*"
                   name="phone"
                   placeholder="+63 912 345 6789"
                   value={form.phone}
                   onChange={handleChange}
-                  required
                   className="w-full pl-10 pr-4 py-3 border-2 border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 bg-slate-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                 />
               </div>
-              {phoneError && <p className="text-red-500 text-xs mt-1">{phoneError}</p>}
             </div>
 
             {/* Address */}
@@ -324,7 +282,6 @@ export default function RegisterPage() {
                   value={form.address}
                   onChange={handleChange}
                   rows={2}
-                  required
                   className="w-full pl-10 pr-4 py-3 border-2 border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 bg-slate-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all resize-none"
                 />
               </div>

@@ -1,5 +1,5 @@
 // ─── ChatWidget.jsx ───────────────────────────────────────────────────────────
-import Icon, { IC } from './Icon';
+import Icon, { IC } from './MyIcons';
 
 /**
  * Props:
