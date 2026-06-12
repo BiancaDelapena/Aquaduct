@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import API from '../api';
 
 import Icon, { IC } from '../components/MyIcons';
-import StatusBadge from '../components/Statusbadge';
+import StatusBadge from '../components/StatusBadge';
 import Modal from '../components/Modal';
 import JugCard from '../components/JugCard';
 import ChatWidget from '../components/Chatwidget';

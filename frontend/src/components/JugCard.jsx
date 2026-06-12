@@ -1,7 +1,7 @@
 // ─── JugCard.jsx ──────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
 import Icon, { IC } from './MyIcons';
-import StatusBadge from './Statusbadge';
+import StatusBadge from './StatusBadge';
 
 /**
  * Props:

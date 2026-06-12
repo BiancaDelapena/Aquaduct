@@ -95,7 +95,7 @@ export default function RegisterPage() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
-    fullName: "",
+    name: "",
     email: "",
     phone: "",
     address: "",
@@ -147,7 +147,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await API.post("register/", {
-        full_name: form.fullName,
+        name: name,
         email,
         phone: form.phone,
         address: form.address,
@@ -210,18 +210,18 @@ export default function RegisterPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
 
-            {/* Full Name */}
+            {/* Name */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Full Name</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Name</label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
                   <UserIcon />
                 </span>
                 <input
                   type="text"
-                  name="fullName"
-                  placeholder="Enter your full name"
-                  value={form.fullName}
+                  name="name"
+                  placeholder="Enter your name or nickname"
+                  value={name}
                   onChange={handleChange}
                   required
                   className="w-full pl-10 pr-4 py-3 border-2 border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 bg-slate-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
