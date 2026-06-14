@@ -50,10 +50,7 @@ const features = [
   },
 ];
 
-const ROLES = ["Customer", "Admin"];
-
 export default function LoginPage() {
-  const [role, setRole] = useState("Customer");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -79,14 +76,12 @@ export default function LoginPage() {
       const res = await API.post("token/", {
         username: email,
         password: password,
-        role: role, // Explicitly sending requested role selection to the backend
       });
 
       // Determine role from backend response. Some backends use boolean flags for staff.
-      const roleFromResponse =
-        res.data.role || (res.data.is_staff || res.data.is_superuser ? "Admin" : role);
+      const roleFromResponse = res.data.role;
 
-      // 3. Role-Based Redirection
+      // Role-Based Redirection
       if (roleFromResponse === "Customer") {
         navigate("/dashboard");
       } else if (roleFromResponse === "Admin") {
@@ -150,29 +145,6 @@ export default function LoginPage() {
           <p className="text-slate-500 text-sm mb-6">Sign in to access your dashboard</p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-
-            {/* Role Selector */}
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Select Role
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {ROLES.map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setRole(r)}
-                    className={`py-2.5 rounded-xl border-2 text-sm font-semibold transition-all duration-200
-                      ${role === r
-                        ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-200"
-                        : "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600"
-                      }`}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             {/* Email */}
             <div>

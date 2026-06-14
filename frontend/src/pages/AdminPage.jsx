@@ -16,18 +16,15 @@ import EditJugTypeModal from '../components/Editjugtypemodal';
 import RowActionMenu from '../components/RowActionMenu';
 import ConfirmDialog from '../components/ConfirmDialog';
 
-// Status values must match backend Order.Status choices exactly
 const ORDER_STATUS_OPTIONS = [
-  'Created',
+  'Ordered',
   'To Be Picked Up',
   'Refilling',
   'On The Way',
   'Delivered',
   'Cancelled',
 ];
-
-// Statuses considered "active" (in-progress deliveries)
-const ACTIVE_STATUSES = new Set(['Created', 'To Be Picked Up', 'Refilling', 'On The Way']);
+const ACTIVE_STATUSES = new Set(['Ordered', 'To Be Picked Up', 'Refilling', 'On The Way']);
 
 export function AdminDashboard() {
   const navigate = useNavigate();
@@ -44,6 +41,7 @@ export function AdminDashboard() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const showError = (message) => {setError(message); setTimeout(() => setError(null), 7000);};
 
   // ── Modal state ──────────────────────────────────────────────────────────────
   const [isAddJugTypeModalOpen, setIsAddJugTypeModalOpen] = useState(false);
@@ -55,6 +53,8 @@ export function AdminDashboard() {
   const [jugTypeToEdit, setJugTypeToEdit] = useState(null);
   const [auditSearchTerm, setAuditSearchTerm] = useState('');
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [jugNames, setJugNames] = useState({});
+  const [namingOrder, setNamingOrder] = useState(null);
 
   // ── Derived slices ───────────────────────────────────────────────────────────
   const activeOrders = orders.filter(o => ACTIVE_STATUSES.has(o.status));
@@ -88,7 +88,7 @@ export function AdminDashboard() {
       setProfile(profileRes.data);
     } catch (err) {
       console.error('Failed to load admin data:', err);
-      setError('Failed to load data. Please refresh.');
+      showError('Failed to load data. Please refresh.');
     } finally {
       setLoading(false);
     }
@@ -119,14 +119,50 @@ export function AdminDashboard() {
 
   // ── Order status update ──────────────────────────────────────────────────────
   const updateOrderStatus = async (orderId, newStatus) => {
+    if (newStatus === 'On The Way') {
+      const order = orders.find(o => o.id === orderId);
+      const newJugItems = (order?.items ?? []).filter(i => i.item_type === 'New Jug');
+      const names = jugNames[orderId] ?? {};
+      const allNamed = newJugItems.every((_, idx) => (names[idx] ?? '').trim() !== '');
+      if (newJugItems.length > 0 && !allNamed) {
+        showError('Please name all new jugs before marking this order as "On The Way".');
+        return;
+      }
+    }
+
     try {
       await API.patch(`orders/${orderId}/status/`, { status: newStatus });
       setOrders(prev => prev.map(o =>
         o.id === orderId ? { ...o, status: newStatus } : o
       ));
+
+      if (newStatus === 'Delivered') {
+        const names = jugNames[orderId] ?? {};
+        if (Object.keys(names).length > 0) {
+          const orderRes = await API.get(`orders/${orderId}/`);
+          const items = orderRes.data.items ?? [];
+
+          for (let idx = 0; idx < items.length; idx++) {
+            const item = items[idx];
+            const name = names[idx]?.trim();
+            if (item.item_type === 'New Jug' && name && item.generated_jug) {
+              await API.patch(`jugs/${item.generated_jug}/`, {
+                jug_label: name,
+              });
+            }
+          }
+
+          setJugNames(prev => {
+            const updated = { ...prev };
+            delete updated[orderId];
+            return updated;
+          });
+          setNamingOrder(null);
+        }
+      }
     } catch (err) {
       console.error('Failed to update order status:', err.response?.data || err);
-      alert('Failed to update order status.');
+      showError('Failed to update order status. Please try again.');
     }
   };
 
@@ -153,7 +189,7 @@ export function AdminDashboard() {
       setIsAddJugTypeModalOpen(false);
     } catch (err) {
       console.error('Failed to add jug type:', err.response?.data || err);
-      alert('Failed to save jug type. Check fields and try again.');
+      showError('Failed to save jug type. Check fields and try again');
     }
   };
 
@@ -191,7 +227,7 @@ export function AdminDashboard() {
       setJugTypeToEdit(null);
     } catch (err) {
       console.error('Failed to update jug type:', err.response?.data || err);
-      alert('Failed to update jug type.');
+      showError('Failed to update jug type.');
     }
   };
 
@@ -209,7 +245,7 @@ export function AdminDashboard() {
       setIsDeleteConfirmOpen(false);
     } catch (err) {
       console.error('Failed to delete jug type:', err.response?.data || err);
-      alert('Failed to delete jug type. It may be referenced by existing orders.');
+      showError('Failed to delete jug type. It may be referenced by existing orders.');
     }
   };
 
@@ -309,15 +345,78 @@ export function AdminDashboard() {
           <p className={muted}>No active deliveries at the moment</p>
         </div>
       ) : (
-        activeOrders.map((order) => (
-          <DeliveryCard
-            key={order.id}
-            order={order}
-            dark={dark}
-            onStatusUpdate={updateOrderStatus}
-            onComplete={handleDeliveryComplete}
-          />
-        ))
+        activeOrders.map((order) => {
+          const newJugItems = (order.items ?? []).filter(i => i.item_type === 'New Jug');
+          const hasNewJugs = newJugItems.length > 0;
+          const names = jugNames[order.id] ?? {};
+          const allNamed = newJugItems.every((_, idx) => (names[idx] ?? '').trim() !== '');
+          const isNaming = namingOrder === order.id;
+
+          return (
+            <div key={order.id}>
+              <DeliveryCard
+                order={order}
+                dark={dark}
+                onStatusUpdate={updateOrderStatus}
+                onComplete={handleDeliveryComplete}
+              />
+
+              {/* Naming panel – only for orders with New Jug items */}
+              {hasNewJugs && (
+                <div className={`-mt-2 mx-0 mb-2 rounded-b-xl border border-t-0 px-4 py-3 ${D ? 'bg-slate-800 border-slate-700' : 'bg-amber-50 border-amber-200'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Package className={`w-4 h-4 ${allNamed ? 'text-green-500' : 'text-amber-500'}`} />
+                      <span className={`text-sm font-semibold ${allNamed ? 'text-green-600' : D ? 'text-amber-300' : 'text-amber-700'}`}>
+                        {allNamed
+                          ? `New jug${newJugItems.length > 1 ? 's' : ''} named ✓`
+                          : `Name new jug${newJugItems.length > 1 ? 's' : ''} before "On The Way"`}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setNamingOrder(isNaming ? null : order.id)}
+                      className={`text-xs px-3 py-1 rounded-full font-semibold transition-colors ${
+                        allNamed
+                          ? D ? 'bg-green-900/40 text-green-400 hover:bg-green-900/60' : 'bg-green-100 text-green-700 hover:bg-green-200'
+                          : D ? 'bg-amber-900/40 text-amber-300 hover:bg-amber-900/60' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                      }`}
+                    >
+                      {isNaming ? 'Close' : allNamed ? 'Edit Names' : 'Name Jugs'}
+                    </button>
+                  </div>
+
+                  {isNaming && (
+                    <div className="mt-3 space-y-2">
+                      {newJugItems.map((item, idx) => {
+                        const currentName = names[idx] ?? '';
+                        return (
+                          <div key={item.id ?? idx} className="flex items-center gap-2">
+                            <span className={`text-xs w-20 flex-shrink-0 ${muted}`}>
+                              Jug {idx + 1}{newJugItems.length > 1 ? ` (${item.jug_type?.type_name ?? ''})` : ''}
+                            </span>
+                            <input
+                              type="text"
+                              placeholder="e.g. Kitchen jug or JUG-001"
+                              value={currentName}
+                              onChange={(e) =>
+                                setJugNames(prev => ({
+                                  ...prev,
+                                  [order.id]: { ...(prev[order.id] ?? {}), [idx]: e.target.value },
+                                }))
+                              }
+                              className={`flex-1 text-sm px-3 py-1.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${inp}`}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })
+        
       )}
     </div>
   );

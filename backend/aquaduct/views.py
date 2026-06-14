@@ -17,16 +17,15 @@ from datetime import timedelta
 from .models import (
     User, Address,
     JugType, Jug, RefillSchedule, Order, OrderItem,
-    OrderStatusHistory, Payment, Notification, JugReport, AdminAuditLog,
+    OrderStatusHistory, Payment, Notification, JugReport, AdminAuditLog, ProfileChangeLog
 )
+
 # pyrefly: ignore [missing-import]
 from .serializers import (
-    UserSerializer, AddressSerializer, RegisterSerializer,
-    JugTypeSerializer, JugSerializer,
-    RefillScheduleSerializer, OrderSerializer,
-    OrderCreateSerializer, OrderStatusUpdateSerializer,
-    PaymentSerializer, NotificationSerializer,
-    JugReportSerializer, AdminAuditLogSerializer,
+    UserSerializer, AddressSerializer, RegisterSerializer, JugTypeSerializer, JugSerializer,
+    RefillScheduleSerializer, OrderSerializer, OrderCreateSerializer, OrderStatusUpdateSerializer,
+    PaymentSerializer, NotificationSerializer, JugReportSerializer, AdminAuditLogSerializer,
+    ProfileChangeLogSerializer, 
 )
 # pyrefly: ignore [missing-import]
 from .permissions import IsRole, IsOwnerOrAdmin
@@ -224,6 +223,20 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         if self.request.user.role == 'Admin' and 'user_id' in self.request.query_params:
             return User.objects.get(pk=self.request.query_params['user_id'])
         return self.request.user
+    def update(self, request, *args, **kwargs):
+        user = self.get_object()
+        if 'name' in request.data:
+            last_name_change = ProfileChangeLog.objects.filter(
+                user=user, field_name='name'
+            ).order_by('-changed_at').first()
+            if last_name_change:
+                thirty_days_ago = timezone.now() - timedelta(days=30)
+                if last_name_change.changed_at > thirty_days_ago:
+                    return Response(
+                        {'detail': 'You can only change your name once every 30 days.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+        return super().update(request, *args, **kwargs)
 
 
 class AddressListCreateView(generics.ListCreateAPIView):
@@ -246,6 +259,12 @@ class AddressDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsOwnerOrAdmin]
     queryset = Address.objects.all()
 
+class UserProfileChangeLogView(generics.ListAPIView):
+    serializer_class = ProfileChangeLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return ProfileChangeLog.objects.filter(user=self.request.user).order_by('-changed_at')
 
 # ═══════════════ JUG VIEWS ═══════════════
 
@@ -300,12 +319,20 @@ class JugDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_update(self, serializer):
         instance = self.get_object()
-        if 'status' in self.request.data and self.request.data['status'] in ['Active', 'Inactive']:
-            instance.status = self.request.data['status']
+        new_status = self.request.data.get('status')
+        if new_status in ['Inactive', 'Lost', 'Broken']:
+            # Only allow status change if jug has been delivered at least once
+            if not instance.last_delivered_at:
+                raise serializers.ValidationError(
+                    "You can only mark a jug as Inactive, Lost, or Broken after it has been delivered."
+                )
+            # Prevent changing back to Active directly from these? Optional; but allowed.
+        # Toggle Active/Inactive (already handled)
+        if new_status in ['Active', 'Inactive'] and new_status != instance.status:
+            instance.status = new_status
             instance.save()
             return Response(JugSerializer(instance).data)
         return super().perform_update(serializer)
-
 
 class RefillScheduleDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = RefillScheduleSerializer
@@ -376,7 +403,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
 
         order = Order.objects.create(
             customer=request.user,
-            status=Order.Status.CREATED,
+            status=Order.Status.ORDERED,
             order_source=Order.OrderSource.WEB_APP,
             delivery_address_snapshot=address.full_address(),
             price_snapshot=total,
@@ -389,7 +416,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
 
         OrderStatusHistory.objects.create(
             order=order,
-            status=Order.Status.CREATED,
+            status=Order.Status.ORDERED,
             changed_by=request.user,
         )
 
@@ -423,12 +450,54 @@ class OrderStatusUpdateView(generics.UpdateAPIView):
         if new_status == Order.Status.DELIVERED:
             instance.actual_arrival = timezone.now()
             instance.completed_at = timezone.now()
-        instance.save()
+            instance.save()   # save first so items can be accessed
+
+            for item in instance.items.filter(
+                item_type=OrderItem.ItemType.NEW_JUG,
+                generated_jug__isnull=True
+            ):
+                jug = Jug.objects.create(
+                    owner=instance.customer,
+                    jug_type=item.jug_type,
+                    status=Jug.Status.ACTIVE,
+                    last_delivered_at=timezone.now()   # <-- add this
+                )
+                item.generated_jug = jug
+                item.save(update_fields=['generated_jug'])
+
+            # Update last_delivered_at for all refill jugs
+            for item in instance.items.filter(
+                item_type=OrderItem.ItemType.REFILL,
+                jug__isnull=False
+            ):
+                item.jug.last_delivered_at = timezone.now()
+                item.jug.save(update_fields=['last_delivered_at'])
+
+        else:
+            instance.save()   # for other status changes
+
         OrderStatusHistory.objects.create(
             order=instance,
             status=new_status,
             changed_by=self.request.user,
         )
+
+class OrderETAUpdateView(generics.UpdateAPIView):
+    serializer_class = serializers.Serializer  # we'll create a simple serializer
+    required_role = 'Admin'
+    permission_classes = [IsRole]
+    queryset = Order.objects.all()
+
+    def get_serializer_class(self):
+        # inline simple serializer
+        class ETASerializer(serializers.Serializer):
+            estimated_arrival = serializers.DateTimeField()
+        return ETASerializer
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        instance.estimated_arrival = serializer.validated_data['estimated_arrival']
+        instance.save()
 
 
 class PaymentListCreateView(generics.ListCreateAPIView):

@@ -1,26 +1,19 @@
 // components/OrderStatusBadge.jsx
 
 const statusStyles = {
-  Delivered:   'bg-green-100 text-green-700',
-  Pending:     'bg-orange-100 text-orange-700',
-  completed:   'bg-green-100 text-green-700',
-  'on-the-way':'bg-blue-100 text-blue-700',
+  Ordered:            'bg-blue-100 text-blue-700',
+  'To Be Picked Up': 'bg-indigo-100 text-indigo-700',
+  Refilling:          'bg-purple-100 text-purple-700',
+  'On The Way':       'bg-yellow-100 text-yellow-700',
+  Delivered:          'bg-green-100 text-green-700',
+  Cancelled:          'bg-red-100 text-red-700',
 };
 
-const defaultStyle = 'bg-blue-100 text-blue-700';
-
 export function OrderStatusBadge({ status }) {
-  const style = statusStyles[status] ?? defaultStyle;
-
-  // Human-readable label for slugified statuses
-  const label =
-    status === 'on-the-way' ? 'On the way' :
-    status === 'completed'  ? 'Done'       :
-    status;
-
+  const style = statusStyles[status] || 'bg-slate-100 text-slate-600';
   return (
     <span className={`text-xs px-2 py-1 rounded-full ${style}`}>
-      {label}
+      {status}
     </span>
   );
 }

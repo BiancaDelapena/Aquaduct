@@ -2,26 +2,12 @@
 from django.urls import path
 # pyrefly: ignore [missing-import]
 from .views import (
-    CustomTokenObtainPairView,
-    RegisterView,
-    UserProfileView,
-    CookieTokenRefreshView,
-    LogoutView,      
-    AddressListCreateView,
-    AddressDetailView,
-    JugTypeListCreateView,
-    JugTypeDetailView,
-    JugListCreateView,
-    JugDetailView,
-    RefillScheduleDetailView,
-    OrderListCreateView,
-    OrderDetailView,
-    OrderStatusUpdateView,
-    PaymentListCreateView,
-    PaymentDetailView,
-    NotificationListView,
-    JugReportListCreateView,
-    AdminAuditLogListView,
+    CustomTokenObtainPairView, RegisterView, UserProfileView, CookieTokenRefreshView, LogoutView,      
+    AddressListCreateView, AddressDetailView, JugTypeListCreateView, JugTypeDetailView, JugListCreateView,
+    JugDetailView, RefillScheduleDetailView, OrderListCreateView, OrderDetailView, OrderStatusUpdateView,
+    OrderETAUpdateView, 
+    PaymentListCreateView, PaymentDetailView, NotificationListView, JugReportListCreateView,
+    AdminAuditLogListView, UserProfileChangeLogView,
 )
 
 urlpatterns = [
@@ -49,6 +35,7 @@ urlpatterns = [
     path('orders/', OrderListCreateView.as_view(), name='order-list'),
     path('orders/<int:pk>/', OrderDetailView.as_view(), name='order-detail'),
     path('orders/<int:pk>/status/', OrderStatusUpdateView.as_view(), name='order-status-update'),
+    path('orders/<int:pk>/eta/', OrderETAUpdateView.as_view(), name='order-eta-update'),
 
     # Payments
     path('payments/', PaymentListCreateView.as_view(), name='payment-list'),
@@ -62,6 +49,7 @@ urlpatterns = [
 
     # Admin Audit Logs
     path('admin/audit-logs/', AdminAuditLogListView.as_view(), name='admin-audit-logs'),
+    path('profile/history/', UserProfileChangeLogView.as_view(), name='profile-change-log'),
     path('logout/', LogoutView.as_view(), name='logout'),
     path('token/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
 ]

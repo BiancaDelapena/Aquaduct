@@ -13,6 +13,7 @@ import AddAddressModal from '../components/AddAddressModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EditProfileModal from '../components/EditProfileModal';
 
+import { AlertCircle } from 'lucide-react';
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function CustomerPage() {
   const navigate = useNavigate();
@@ -22,7 +23,6 @@ export default function CustomerPage() {
   const [jugs, setJugs] = useState([]);
   const [showChatbot, setShowChatbot] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-
 
   const [profile, setProfile] = useState(null);
   const [addresses, setAddresses] = useState([]);
@@ -34,12 +34,13 @@ export default function CustomerPage() {
     API.get('jugs/').then(res => {
       const transformed = res.data.map(j => ({
         ...j,
-        db_id: j.id,                    // keep the real DB id for API calls
-        id: j.unique_id,                // display id for UI
+        db_id: j.id,
+        id: j.unique_id,
         type: j.jug_type_name,
         lastRefill: j.last_delivered_at
           ? new Date(j.last_delivered_at).toLocaleDateString()
           : 'N/A',
+        nextRefillRaw: j.refill_schedule?.next_reminder_at ?? null,   // raw ISO string
         nextRefill: j.refill_schedule?.next_reminder_at
           ? new Date(j.refill_schedule.next_reminder_at).toLocaleDateString()
           : '-',
@@ -85,6 +86,12 @@ export default function CustomerPage() {
   const [pendingProfileData, setPendingProfileData] = useState(null);
 
   // ── Jug handlers ────────────────────────────────────────────────────────────
+  const [error, setError] = useState(null);
+    const showError = (message) => {
+      setError(message);
+      setTimeout(() => setError(null), 7000);
+    };
+
   const toggleJugStatus = async (id) => {
     const jug = jugs.find(j => j.id === id);
     if (!jug) return;
@@ -94,6 +101,7 @@ export default function CustomerPage() {
       setJugs(prev => prev.map(j => j.id === id ? { ...j, status: newStatus } : j));
     } catch (err) {
       console.error('Failed to update jug status:', err);
+      showError('Could not update jug status. Please try again.');
     }
   };
 
@@ -112,6 +120,7 @@ export default function CustomerPage() {
       setJugs(prev => prev.map(j => j.id === freqJug.id ? { ...j, frequency: pendingFreq } : j));
     } catch (err) {
       console.error('Failed to update frequency:', err);
+      showError('Could not update refill frequency. Please try again.');
     }
     setShowFreqConfirm(false);
     setFreqJug(null);
@@ -142,6 +151,7 @@ export default function CustomerPage() {
       setEditingAddress(null);
     } catch (err) {
       console.error('Failed to save address:', err.response?.data || err);
+      showError('Failed to save address. Please check your details and try again.');
     }
   };
 
@@ -165,6 +175,7 @@ export default function CustomerPage() {
         setPendingProfileData(null);
       } catch (err) {
         console.error('Failed to update profile:', err);
+        showError('Failed to update profile. Please try again.');
       }
     }
   };
@@ -193,6 +204,19 @@ export default function CustomerPage() {
 
   // ── DASHBOARD ──────────────────────────────────────────────────────────────
   const renderDashboard = () => {
+    const activeJugs = jugs.filter(j => j.status === 'Active' && j.nextRefillRaw);
+      let nextRefillText = '';
+      if (activeJugs.length > 0) {
+        const upcomingDates = activeJugs
+          .map(j => new Date(j.nextRefillRaw))
+          .filter(d => !isNaN(d));
+        if (upcomingDates.length > 0) {
+          const earliest = new Date(Math.min(...upcomingDates));
+          const now = new Date();
+          const diffDays = Math.ceil((earliest - now) / (1000 * 60 * 60 * 24));
+          nextRefillText = diffDays > 0 ? `${diffDays} days` : 'Today';
+        }
+      }
     const bars = [
       { m: 'Jan', v: 30 }, { m: 'Feb', v: 55 }, { m: 'Mar', v: 85 },
       { m: 'Apr', v: 45 }, { m: 'May', v: 95 }, { m: 'Jun', v: 20 },
@@ -266,10 +290,10 @@ export default function CustomerPage() {
 
           <div className={`rounded-2xl border p-6 ${card} space-y-4`}>
             <div className={`font-bold ${text}`}>Live Deliveries</div>
-            {orders.filter(o => o.status === 'On The Way' || o.status === 'In Transit').length === 0 ? (
+            {orders.filter(o => o.status === 'On The Way').length === 0 ? (
               <div className={`text-sm ${muted}`}>No active deliveries.</div>
             ) : (
-              orders.filter(o => o.status === 'On The Way' || o.status === 'In Transit').map(o => (
+              orders.filter(o => o.status === 'On The Way').map(o => (
                 <div key={o.id} className={`p-3 rounded-xl border ${D ? 'bg-amber-900/20 border-amber-700/40' : 'bg-amber-50 border-amber-200'}`}>
                   <div className={`text-sm font-bold ${D ? 'text-amber-300' : 'text-amber-800'}`}>{o.id}</div>
                   <div className={`text-xs mt-0.5 ${D ? 'text-amber-400' : 'text-amber-600'}`}>
@@ -295,8 +319,8 @@ export default function CustomerPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { label: 'Active Jugs', val: jugs.filter(j => j.status === 'Active').length, color: 'text-emerald-500', bg: D ? 'bg-emerald-900/30' : 'bg-emerald-50', icon: IC.droplet },
-            { label: 'In Transit', val: orders.filter(o => o.status === 'On The Way' || o.status === 'In Transit').length, color: 'text-blue-500', bg: D ? 'bg-blue-900/30' : 'bg-blue-50', icon: IC.truck },
-            { label: 'Next Refill', val: '9 days', color: 'text-amber-500', bg: D ? 'bg-amber-900/30' : 'bg-amber-50', icon: IC.clock },
+            { label: 'In Transit', val: orders.filter(o => o.status === 'On The Way').length, color: 'text-blue-500', bg: D ? 'bg-blue-900/30' : 'bg-blue-50', icon: IC.truck },
+            { label: 'Next Refill',  val: nextRefillText || '—',   color: 'text-amber-500',  bg: D ? 'bg-amber-900/30' : 'bg-amber-50',  icon: IC.clock, },
             { label: 'Orders (Jun)', val: orders.length, color: 'text-purple-500', bg: D ? 'bg-purple-900/30' : 'bg-purple-50', icon: IC.package },
           ].map(s => (
             <div key={s.label} className={`rounded-2xl border p-4 ${card}`}>
@@ -334,7 +358,7 @@ export default function CustomerPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className={`text-xs font-semibold uppercase tracking-wider border-b ${D ? 'border-slate-800 text-slate-500' : 'border-slate-100 text-slate-400'}`}>
-                    {['Order ID', 'Jug', 'Type', 'ETA', 'Arrived', 'Delay', 'Amount', 'Status', ''].map(h => (
+                    {['Order ID', 'Jug', 'Type', 'ETA', 'Arrived', 'Amount', 'Status', ''].map(h => (
                       <th key={h} className="text-left py-3 px-4 whitespace-nowrap font-semibold">{h}</th>
                     ))}
                   </tr>
@@ -343,18 +367,26 @@ export default function CustomerPage() {
                   {orders.map(o => (
                     <tr key={o.id} className={`transition-colors ${D ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50'}`}>
                       <td className={`py-3.5 px-4 font-mono font-bold text-xs ${text}`}>{o.id}</td>
-                      <td className={`py-3.5 px-4 text-xs ${muted}`}>{o.items?.[0]?.jug?.unique_id || o.items?.[0]?.jug_type?.type_name || '—'}</td>
+                      <td className={`py-3.5 px-4 text-xs ${muted}`}>
+                        {o.items?.[0]?.jug?.unique_id || '—'}
+                      </td>
+                      <td className={`py-3.5 px-4 text-xs ${muted}`}>
+                        {o.items?.[0]?.item_type || '—'}
+                      </td>
+                      <td className={`py-3.5 px-4 text-xs ${muted}`}>
+                        {o.estimated_arrival ? new Date(o.estimated_arrival).toLocaleString() : '—'}
+                      </td>
+                      <td className={`py-3.5 px-4 text-xs ${muted}`}>
+                        {o.actual_arrival ? new Date(o.actual_arrival).toLocaleString() : '—'}
+                      </td>
                       <td className={`py-3.5 px-4 text-xs font-bold ${text}`}>₱{o.price_snapshot}</td>
-                      <td className={`py-3.5 px-4 text-xs ${muted}`}>{o.estimated_arrival}</td>
-                      <td className={`py-3.5 px-4 text-xs ${muted}`}>{o.actual_arrival}</td>
-                      <td className={`py-3.5 px-4 text-xs ${muted}`}>{o.delay}</td>
-                      <td className={`py-3.5 px-4 text-xs font-bold ${text}`}>{o.price_snapshot}</td>
                       <td className="py-3.5 px-4"><StatusBadge status={o.status} dark={D} /></td>
                       <td className="py-3.5 px-4">
-                        {o.status === 'Delivered' && (
+                        {o.status === 'Delivered' && o.items.some(item => item.item_type === 'Refill' && item.jug) && (
                           <button
                             onClick={() => {
-                              setReportOrder(o);
+                              const refillItem = o.items.find(item => item.item_type === 'Refill' && item.jug);
+                              setReportOrder({ ...o, reportJugId: refillItem.jug });
                               setReportForm({ report_type: 'Not Delivered', description: '' });
                               setShowReportModal(true);
                             }}
@@ -577,6 +609,10 @@ export default function CustomerPage() {
         {activeTab === 'orders' && renderOrders()}
         {activeTab === 'inventory' && renderInventory()}
         {activeTab === 'profile' && renderProfile()}
+        {error && (<div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-center gap-2"> 
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />{error}
+    </div>
+  )}
       </main>
 
       {/* ── FAB ─────────────────────────────────────────────────────────── */}
@@ -680,6 +716,7 @@ export default function CustomerPage() {
                 setOrders(res.data);
               } catch (err) {
                 console.error('Order failed:', err);
+                showError('Failed to place refill order. Please try again.');
               }
               setShowRefillModal(false);
               setSelectedJugForRefill(null);
@@ -758,6 +795,7 @@ export default function CustomerPage() {
                 setOrders(res.data);
               } catch (err) {
                 console.error('Order failed:', err);
+                showError('Failed to place new jug order. Please try again.');
               }
               setShowNewJugModal(false);
               setSelectedJugType(null);
@@ -926,8 +964,7 @@ export default function CustomerPage() {
               disabled={!reportForm.description.trim() || reportSubmitting}
               onClick={async () => {
                 if (!reportForm.description.trim() || !reportOrder) return;
-                // Find the first jug from the order items
-                const jugId = reportOrder.items?.[0]?.jug;
+                const jugId = reportOrder.reportJugId;
                 if (!jugId) {
                   alert('No jug found for this order.');
                   return;
@@ -945,7 +982,7 @@ export default function CustomerPage() {
                   alert('Report submitted successfully. Our team will follow up.');
                 } catch (err) {
                   console.error('Report failed:', err.response?.data || err);
-                  alert('Failed to submit report. Please try again.');
+                  showError('Failed to submit report. Please try again.');
                 } finally {
                   setReportSubmitting(false);
                 }

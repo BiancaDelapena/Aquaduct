@@ -148,11 +148,13 @@ class RefillSchedule(TimeStampedModel):
             raise ValidationError("Schedule only allowed for active jugs.")
         if self.frequency_days <= 0:
             raise ValidationError("Frequency must be > 0.")
+        if self.frequency_days > 365:
+            raise ValidationError("Frequency cannot exceed 365 days.")
 
 
 class Order(TimeStampedModel):
     class Status(models.TextChoices):
-        CREATED = "Created", "Created"
+        ORDERED = "Ordered", "Ordered"
         TO_BE_PICKED_UP = "To Be Picked Up", "To Be Picked Up"
         REFILLING = "Refilling", "Refilling"
         ON_THE_WAY = "On The Way", "On The Way"
@@ -167,13 +169,13 @@ class Order(TimeStampedModel):
         User, on_delete=models.PROTECT, related_name="orders",
         limit_choices_to={'role': User.Role.CUSTOMER}
     )
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.CREATED)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ORDERED)
     order_source = models.CharField(max_length=20, choices=OrderSource.choices, default=OrderSource.WEB_APP)
     delivery_address_snapshot = models.TextField(default='')
     price_snapshot = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     special_instructions = models.TextField(blank=True)
-    estimated_arrival = models.DateTimeField(null=True, blank=True)         # default = created_at + 2h
-    actual_arrival = models.DateTimeField(null=True, blank=True)            # set when DELIVERED
+    estimated_arrival = models.DateTimeField(null=True, blank=True)   
+    actual_arrival = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -185,14 +187,14 @@ class Order(TimeStampedModel):
 
     def save(self, *args, **kwargs):
         if not self.pk and not self.estimated_arrival:
-            self.estimated_arrival = timezone.now() + timezone.timedelta(hours=2)
+            self.estimated_arrival = timezone.now() + timedelta(hours=2)
         super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Order #{self.pk} - {self.customer.email}"
 
     def can_be_cancelled(self):
-        return self.status in [self.Status.CREATED]
+        return self.status in [self.Status.ORDERED]
 
 class OrderItem(TimeStampedModel):
     class ItemType(models.TextChoices):
@@ -325,7 +327,7 @@ class AdminAuditLog(models.Model):
         LOGOUT = "Logout", "Logout"
 
     admin_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="admin_audit_logs")
-    action = models.CharField(max_length=50, choices=Action.choices)
+    action = models.CharField(max_length=70, choices=Action.choices)
     resource_type = models.CharField(max_length=50)  # e.g., 'Order', 'JugType', 'User'
     resource_id = models.PositiveIntegerField(null=True, blank=True)
     old_values = models.JSONField(null=True, blank=True)  # stores previous state

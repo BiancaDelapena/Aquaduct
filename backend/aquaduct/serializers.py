@@ -16,6 +16,12 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'username', 'email', 'name', 'phone_number', 'role']
         read_only_fields = ['role']
+    
+    def validate_phone_number(self, value):
+        user = self.instance
+        if user and user.role == 'Customer' and not value:
+            raise serializers.ValidationError("Phone number is required for customers.")
+        return value
 
 class RegisterSerializer(serializers.Serializer):
     """Serializer for user registration"""
@@ -29,7 +35,7 @@ class RegisterSerializer(serializers.Serializer):
         ]
     )
     name = serializers.CharField(required=True, max_length=255)
-    phone = serializers.CharField(required=False, allow_blank=True)
+    phone = serializers.CharField(required=True, allow_blank=False)
     address = serializers.CharField(required=False, allow_blank=True)
     password = serializers.CharField(write_only=True, required=True, min_length=6)
 
@@ -68,7 +74,9 @@ class RegisterSerializer(serializers.Serializer):
 
     def validate_phone(self, value):
         import re
-        if value and not re.match(r'^\+?[0-9]{7,15}$', value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Phone number is required.")
+        if not re.match(r'^\+?[0-9]{7,15}$', value):
             raise serializers.ValidationError("Phone number must be 7–15 digits and may start with '+'.")
         return value
 
@@ -123,6 +131,11 @@ class AddressSerializer(serializers.ModelSerializer):
 
 # ══════════════════ NEW SERIALIZERS ══════════════════
 
+class ProfileChangeLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProfileChangeLog
+        fields = ['id', 'field_name', 'old_value', 'new_value', 'changed_at']
+
 # ── JugType ─────────────────────────────────────────────────
 class JugTypeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -172,6 +185,11 @@ class RefillScheduleSerializer(serializers.ModelSerializer):
             instance.status = validated_data['status']
         instance.save()
         return instance
+
+    def validate_frequency_days(self, value):
+        if value > 365:
+            raise serializers.ValidationError("Frequency cannot exceed 365 days.")
+        return value
 
 # ── Order & OrderItem ───────────────────────────────────────
 class OrderItemSerializer(serializers.ModelSerializer):

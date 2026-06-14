@@ -3,7 +3,7 @@ import { MapPin, Phone, Package, Navigation, CheckCircle } from 'lucide-react';
 
 // Must match backend Order.Status choices exactly
 const DELIVERY_STATUSES = [
-  { label: 'Order Placed',      value: 'Created' },
+  { label: 'Order Placed',      value: 'Ordered' },
   { label: 'To Be Picked Up',   value: 'To Be Picked Up' },
   { label: 'Refilling',         value: 'Refilling' },
   { label: 'On The Way',        value: 'On The Way' },

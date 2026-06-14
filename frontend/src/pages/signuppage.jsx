@@ -147,7 +147,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await API.post("register/", {
-        name: name,
+        name: form.name,
         email,
         phone: form.phone,
         address: form.address,
@@ -221,7 +221,7 @@ export default function RegisterPage() {
                   type="text"
                   name="name"
                   placeholder="Enter your name or nickname"
-                  value={name}
+                  value={form.name}
                   onChange={handleChange}
                   required
                   className="w-full pl-10 pr-4 py-3 border-2 border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 bg-slate-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
