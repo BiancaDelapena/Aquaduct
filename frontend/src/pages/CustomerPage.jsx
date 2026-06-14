@@ -3,18 +3,19 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API from '../api';
 
+import refillIcon from '../assets/RefillJugPicture.png';
+import newJugIcon from '../assets/NewJugPicture.png';
 import Icon, { IC } from '../components/MyIcons';
 import StatusBadge from '../components/StatusBadge';
 import Modal from '../components/Modal';
 import JugCard from '../components/JugCard';
 import ChatWidget from '../components/Chatwidget';
-import FrequencyEditModal from '../components/Frequencyeditmodal';
 import AddAddressModal from '../components/AddAddressModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EditProfileModal from '../components/EditProfileModal';
 
 import { AlertCircle } from 'lucide-react';
-// ─── Main Component ───────────────────────────────────────────────────────────
+
 export default function CustomerPage() {
   const navigate = useNavigate();
 
@@ -31,31 +32,16 @@ export default function CustomerPage() {
     API.get('profile/').then(res => setProfile(res.data));
     API.get('addresses/').then(res => setAddresses(res.data));
     API.get('jug-types/').then(res => setJugTypes(res.data));
-    API.get('jugs/').then(res => {
-      const transformed = res.data.map(j => ({
-        ...j,
-        db_id: j.id,
-        id: j.unique_id,
-        type: j.jug_type_name,
-        lastRefill: j.last_delivered_at
-          ? new Date(j.last_delivered_at).toLocaleDateString()
-          : 'N/A',
-        nextRefillRaw: j.refill_schedule?.next_reminder_at ?? null,   // raw ISO string
-        nextRefill: j.refill_schedule?.next_reminder_at
-          ? new Date(j.refill_schedule.next_reminder_at).toLocaleDateString()
-          : '-',
-        frequency: j.refill_schedule
-          ? `${j.refill_schedule.frequency_days} days`
-          : '-',
-      }));
-      setJugs(transformed);
-    });
-    API.get('orders/').then(res => setOrders(res.data));
+
+    loadCustomerData();
+
+    const interval = setInterval(loadCustomerData, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const [orders, setOrders] = useState([]);
-
   const [jugTypes, setJugTypes] = useState([]);
+
   const [showRefillModal, setShowRefillModal] = useState(false);
   const [showNewJugModal, setShowNewJugModal] = useState(false);
   const [selectedJugType, setSelectedJugType] = useState(null);
@@ -63,16 +49,10 @@ export default function CustomerPage() {
   const [selectedAddress, setSelectedAddress] = useState(null);
   const [selectedNewJugAddress, setSelectedNewJugAddress] = useState(null);
 
-  // Report modal
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [reportOrder, setReportOrder] = useState(null);
-  const [reportForm, setReportForm] = useState({ report_type: 'Not Delivered', description: '' });
-  const [reportSubmitting, setReportSubmitting] = useState(false);
-
-  const [showFreqModal, setShowFreqModal] = useState(false);
-  const [showFreqConfirm, setShowFreqConfirm] = useState(false);
-  const [freqJug, setFreqJug] = useState(null);
-  const [pendingFreq, setPendingFreq] = useState('');
+  // NEW: Frequency toggle confirm (enable/disable)
+  const [showFreqConfirmToggle, setShowFreqConfirmToggle] = useState(false);
+  const [freqToggleJug, setFreqToggleJug] = useState(null);
+  const [freqTogglePending, setFreqTogglePending] = useState(null); // { days, enabled }
 
   // Address modal states
   const [showAddAddressModal, setShowAddAddressModal] = useState(false);
@@ -84,13 +64,60 @@ export default function CustomerPage() {
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [showConfirmProfileModal, setShowConfirmProfileModal] = useState(false);
   const [pendingProfileData, setPendingProfileData] = useState(null);
+  const [monthlyConsumption, setMonthlyConsumption] = useState([]);
 
   // ── Jug handlers ────────────────────────────────────────────────────────────
   const [error, setError] = useState(null);
-    const showError = (message) => {
-      setError(message);
-      setTimeout(() => setError(null), 7000);
-    };
+  const showError = (message) => {
+    setError(message);
+    setTimeout(() => setError(null), 7000);
+  };
+
+  const activeRefillJugIds = new Set(
+    orders
+      .filter(o => !['Delivered', 'Cancelled'].includes(o.status))
+      .flatMap(o => o.items ?? [])
+      .filter(item => item.item_type === 'Refill' && item.jug)
+      .map(item => item.jug)   // item.jug is the jug's DB id
+  );
+
+  const loadCustomerData = () => {
+    API.get('consumption/').then(res => setMonthlyConsumption(res.data)).catch(() => { });
+    API.get('jugs/').then(res => {
+      const transformed = res.data.map(j => ({
+        ...j,
+        db_id: j.id,
+        id: j.unique_id,
+        type: j.jug_type_name,
+        image: j.jug_type_image,
+        lastRefill: j.last_delivered_at
+          ? new Date(j.last_delivered_at).toLocaleDateString()
+          : 'N/A',
+        nextRefillRaw: j.refill_schedule?.next_reminder_at ?? null,
+        nextRefill: j.refill_schedule?.next_reminder_at
+          ? new Date(j.refill_schedule.next_reminder_at).toLocaleDateString()
+          : '-',
+        frequency: j.refill_schedule?.status === 'Active' && j.refill_schedule
+          ? `${j.refill_schedule.frequency_days} days`
+          : '-',
+      }));
+      setJugs(transformed);
+    }).catch(() => { });
+
+    API.get('orders/').then(res => setOrders(res.data)).catch(() => { });
+  };
+
+  // Initial data loading + polling
+  useEffect(() => {
+    API.get('profile/').then(res => setProfile(res.data));
+    API.get('addresses/').then(res => setAddresses(res.data));
+    API.get('jug-types/').then(res => setJugTypes(res.data));
+
+    loadCustomerData();
+
+    const interval = setInterval(loadCustomerData, 7000);
+    return () => clearInterval(interval);
+  }, []);
 
   const toggleJugStatus = async (id) => {
     const jug = jugs.find(j => j.id === id);
@@ -105,26 +132,50 @@ export default function CustomerPage() {
     }
   };
 
-  const openFreqModal = (jug) => {
-    setFreqJug(jug);
-    setPendingFreq(jug.frequency === '-' ? '' : jug.frequency);
-    setShowFreqModal(true);
+  // ── NEW: Frequency update handler (called by JugCard's onUpdateFreq) ─────────
+  /**
+   * JugCard will call onUpdateFreq(jug, days, enabled)
+   * We'll show a confirmation dialog, then apply the change.
+   */
+  const handleFreqUpdate = (jug, days, enabled) => {
+    setFreqToggleJug(jug);
+    setFreqTogglePending({ days, enabled });
+    setShowFreqConfirmToggle(true);
   };
 
-  const confirmFreq = async () => {
-    if (!freqJug) return;
-    const freqMap = { '1 week': 7, '2 weeks': 14, '3 weeks': 21, '1 month': 30 };
-    const days = freqMap[pendingFreq] || 14;
+  const confirmFreqToggle = async () => {
+    if (!freqToggleJug || !freqTogglePending) return;
+    const { days, enabled } = freqTogglePending;
     try {
-      await API.patch(`jugs/${freqJug.db_id}/schedule/`, { frequency_days: days });
-      setJugs(prev => prev.map(j => j.id === freqJug.id ? { ...j, frequency: pendingFreq } : j));
+      if (enabled && days > 0) {
+        // Enable / update schedule
+        await API.patch(`jugs/${freqToggleJug.db_id}/schedule/`, {
+          frequency_days: days,
+          status: 'Active'   // ensure schedule is active
+        });
+        setJugs(prev => prev.map(j =>
+          j.id === freqToggleJug.id
+            ? { ...j, frequency: `${days} days` }
+            : j
+        ));
+      } else {
+        // Disable schedule by pausing it
+        await API.patch(`jugs/${freqToggleJug.db_id}/schedule/`, {
+          status: 'Paused'
+        });
+        setJugs(prev => prev.map(j =>
+          j.id === freqToggleJug.id
+            ? { ...j, frequency: '-' }
+            : j
+        ));
+      }
     } catch (err) {
       console.error('Failed to update frequency:', err);
-      showError('Could not update refill frequency. Please try again.');
+      showError('Could not update refill schedule. Please try again.');
     }
-    setShowFreqConfirm(false);
-    setFreqJug(null);
-    setPendingFreq('');
+    setShowFreqConfirmToggle(false);
+    setFreqToggleJug(null);
+    setFreqTogglePending(null);
   };
 
   // ── Address handlers ────────────────────────────────────────────────────────
@@ -192,7 +243,6 @@ export default function CustomerPage() {
     ? 'bg-slate-800 border-slate-700 text-slate-100 placeholder-slate-500 focus:border-blue-500'
     : 'bg-slate-50 border-slate-300 text-slate-800 focus:border-blue-500';
 
-  // Theme bundle passed to child components
   const theme = { text, muted, border, hov, inp, card, D };
 
   const NAV_TABS = [
@@ -205,23 +255,27 @@ export default function CustomerPage() {
   // ── DASHBOARD ──────────────────────────────────────────────────────────────
   const renderDashboard = () => {
     const activeJugs = jugs.filter(j => j.status === 'Active' && j.nextRefillRaw);
-      let nextRefillText = '';
-      if (activeJugs.length > 0) {
-        const upcomingDates = activeJugs
-          .map(j => new Date(j.nextRefillRaw))
-          .filter(d => !isNaN(d));
-        if (upcomingDates.length > 0) {
-          const earliest = new Date(Math.min(...upcomingDates));
-          const now = new Date();
-          const diffDays = Math.ceil((earliest - now) / (1000 * 60 * 60 * 24));
-          nextRefillText = diffDays > 0 ? `${diffDays} days` : 'Today';
-        }
+    let nextRefillText = '';
+    if (activeJugs.length > 0) {
+      const upcomingDates = activeJugs
+        .map(j => new Date(j.nextRefillRaw))
+        .filter(d => !isNaN(d));
+      if (upcomingDates.length > 0) {
+        const earliest = new Date(Math.min(...upcomingDates));
+        const now = new Date();
+        const diffDays = Math.ceil((earliest - now) / (1000 * 60 * 60 * 24));
+        nextRefillText = diffDays > 0 ? `${diffDays} days` : 'Today';
       }
-    const bars = [
-      { m: 'Jan', v: 30 }, { m: 'Feb', v: 55 }, { m: 'Mar', v: 85 },
-      { m: 'Apr', v: 45 }, { m: 'May', v: 95 }, { m: 'Jun', v: 20 },
-    ];
-    const maxV = Math.max(...bars.map(b => b.v));
+    }
+    const bars = monthlyConsumption.map(item => ({
+      m: item.month,
+      v: item.count,
+    }));
+    const maxV = Math.max(...bars.map(b => b.v), 1);
+
+    const activeOrders = orders.filter(o =>
+      ['Ordered', 'To Be Picked Up', 'Refilling', 'On The Way'].includes(o.status)
+    );
 
     return (
       <div className="space-y-6">
@@ -235,12 +289,11 @@ export default function CustomerPage() {
             <div className="relative flex items-start justify-between gap-4">
               <div>
                 <div className="mb-1 inline-flex p-2.5 bg-white/15 rounded-xl">
-                  <Icon path={IC.refresh} className="w-5 h-5 text-white" />
+                  <img src={refillIcon} alt="Refill" className="w-8 h-8 object-contain" />
                 </div>
                 <div className="font-bold text-lg mt-2">Request Refill</div>
                 <div className="text-blue-200 text-sm mt-0.5">Schedule a swift refill delivery</div>
               </div>
-              <div className="text-3xl font-black text-white/90 flex-shrink-0">₱30</div>
             </div>
           </button>
 
@@ -252,14 +305,63 @@ export default function CustomerPage() {
             <div className="relative flex items-start justify-between gap-4">
               <div>
                 <div className={`mb-1 inline-flex p-2.5 rounded-xl ${D ? 'bg-blue-900/50' : 'bg-blue-50'}`}>
-                  <Icon path={IC.plus} className="w-5 h-5 text-blue-500" />
+                  <img src={newJugIcon} alt="New Jug" className="w-8 h-8 object-contain" />
                 </div>
                 <div className={`font-bold text-lg mt-2 ${text}`}>New Container</div>
                 <div className={`text-sm mt-0.5 ${muted}`}>Purchase an additional water jug</div>
               </div>
-              <div className={`text-3xl font-black ${text} flex-shrink-0`}>₱125</div>
             </div>
           </button>
+        </div>
+
+        {/* Active Deliveries */}
+        <div className={`p-6 rounded-2xl border ${card} space-y-4`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className={`font-bold ${text}`}>Active Deliveries</h3>
+              <span className={`text-xs px-2.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 rounded-full font-semibold`}>
+                {activeOrders.length} pending
+              </span>
+            </div>
+            <button
+              onClick={() => setActiveTab('orders')}
+              className="text-xs font-semibold text-blue-500 hover:text-blue-600 transition-colors"
+            >
+              View Order History →
+            </button>
+          </div>
+          {activeOrders.length === 0 ? (
+            <div className={`text-sm ${muted}`}>No active deliveries right now.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {activeOrders.map((order) => {
+                const itemSummary = order.items?.map(i =>
+                  i.item_type === 'Refill'
+                    ? `Refill (${i.jug?.unique_id ?? '—'})`
+                    : `New Jug — ${i.jug_type?.type_name ?? '—'}`
+                ).join(', ') || 'Order';
+
+                return (
+                  <div key={order.id} className={`flex items-center justify-between p-4 rounded-xl border transition-colors ${D ? 'border-slate-800 bg-slate-900/40 hover:bg-slate-800/60' : 'border-slate-100 bg-slate-50/50 hover:bg-slate-100'}`}>
+                    <div className="min-w-0 pr-2">
+                      <div className={`text-sm font-mono font-bold ${text} truncate`}>
+                        #{order.id} — <span className="font-sans font-medium text-xs">{itemSummary}</span>
+                      </div>
+                      <div className={`text-xs mt-1 font-medium ${D ? 'text-amber-400' : 'text-amber-600'}`}>
+                        ETA: {order.estimated_arrival ? new Date(order.estimated_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </div>
+                      <div className={`text-xs mt-0.5 truncate ${muted}`}>
+                        {order.delivery_address_snapshot}
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0">
+                      <StatusBadge status={order.status} dark={D} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Chart + live deliveries */}
@@ -269,23 +371,30 @@ export default function CustomerPage() {
               <div className={`font-bold ${text}`}>Consumption History</div>
               <div className={`text-xs mt-0.5 ${muted}`}>Jugs consumed per month</div>
             </div>
-            <div className="flex items-end gap-2 sm:gap-3 h-40 pt-4">
-              {bars.map((b, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group relative">
-                  <div className={`absolute -top-6 text-xs font-bold transition-opacity opacity-0 group-hover:opacity-100 ${text}`}>
-                    {Math.round(b.v / 10)}
+
+            {monthlyConsumption.length === 0 ? (
+              <div className={`flex items-center justify-center h-40 text-sm ${muted}`}>
+                No consumption data yet.
+              </div>
+            ) : (
+              <div className="flex items-end gap-2 sm:gap-3 h-40 pt-4">
+                {bars.map((b, i) => (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group relative">
+                    <div className={`absolute -top-6 text-xs font-bold transition-opacity opacity-0 group-hover:opacity-100 ${text}`}>
+                      {b.v}
+                    </div>
+                    <div
+                      className={`w-full rounded-t-lg transition-all duration-500 ${b.v === maxV
+                        ? 'bg-blue-500 group-hover:bg-blue-400'
+                        : D ? 'bg-slate-700 group-hover:bg-slate-600' : 'bg-slate-200 group-hover:bg-blue-200'
+                        }`}
+                      style={{ height: `${maxV > 0 ? (b.v / maxV) * 100 : 0}%` }}
+                    />
+                    <span className={`text-xs font-medium ${muted}`}>{b.m}</span>
                   </div>
-                  <div
-                    className={`w-full rounded-t-lg transition-all duration-500 ${b.v === maxV
-                      ? 'bg-blue-500 group-hover:bg-blue-400'
-                      : D ? 'bg-slate-700 group-hover:bg-slate-600' : 'bg-slate-200 group-hover:bg-blue-200'
-                      }`}
-                    style={{ height: `${b.v}%` }}
-                  />
-                  <span className={`text-xs font-medium ${muted}`}>{b.m}</span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className={`rounded-2xl border p-6 ${card} space-y-4`}>
@@ -320,7 +429,7 @@ export default function CustomerPage() {
           {[
             { label: 'Active Jugs', val: jugs.filter(j => j.status === 'Active').length, color: 'text-emerald-500', bg: D ? 'bg-emerald-900/30' : 'bg-emerald-50', icon: IC.droplet },
             { label: 'In Transit', val: orders.filter(o => o.status === 'On The Way').length, color: 'text-blue-500', bg: D ? 'bg-blue-900/30' : 'bg-blue-50', icon: IC.truck },
-            { label: 'Next Refill',  val: nextRefillText || '—',   color: 'text-amber-500',  bg: D ? 'bg-amber-900/30' : 'bg-amber-50',  icon: IC.clock, },
+            { label: 'Next Refill', val: nextRefillText || '—', color: 'text-amber-500', bg: D ? 'bg-amber-900/30' : 'bg-amber-50', icon: IC.clock, },
             { label: 'Orders (Jun)', val: orders.length, color: 'text-purple-500', bg: D ? 'bg-purple-900/30' : 'bg-purple-50', icon: IC.package },
           ].map(s => (
             <div key={s.label} className={`rounded-2xl border p-4 ${card}`}>
@@ -350,7 +459,7 @@ export default function CustomerPage() {
     return (
       <div className="space-y-5">
         {Object.entries(grouped).sort((a, b) => b[0].localeCompare(a[0])).map(([date, orders]) => (
-          <div key={date} className={`rounded-2xl border overflow-hidden ${card}`}>
+          <div key={date} className={`rounded-2xl border ${card}`}>
             <div className={`px-6 py-3 border-b text-sm font-semibold ${D ? 'bg-slate-800/80 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
               {new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
             </div>
@@ -368,7 +477,7 @@ export default function CustomerPage() {
                     <tr key={o.id} className={`transition-colors ${D ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50'}`}>
                       <td className={`py-3.5 px-4 font-mono font-bold text-xs ${text}`}>{o.id}</td>
                       <td className={`py-3.5 px-4 text-xs ${muted}`}>
-                        {o.items?.[0]?.jug?.unique_id || '—'}
+                        {o.items?.[0]?.jug_label || o.items?.[0]?.jug?.unique_id || '—'}
                       </td>
                       <td className={`py-3.5 px-4 text-xs ${muted}`}>
                         {o.items?.[0]?.item_type || '—'}
@@ -381,21 +490,6 @@ export default function CustomerPage() {
                       </td>
                       <td className={`py-3.5 px-4 text-xs font-bold ${text}`}>₱{o.price_snapshot}</td>
                       <td className="py-3.5 px-4"><StatusBadge status={o.status} dark={D} /></td>
-                      <td className="py-3.5 px-4">
-                        {o.status === 'Delivered' && o.items.some(item => item.item_type === 'Refill' && item.jug) && (
-                          <button
-                            onClick={() => {
-                              const refillItem = o.items.find(item => item.item_type === 'Refill' && item.jug);
-                              setReportOrder({ ...o, reportJugId: refillItem.jug });
-                              setReportForm({ report_type: 'Not Delivered', description: '' });
-                              setShowReportModal(true);
-                            }}
-                            className="text-xs text-red-500 hover:text-red-400 font-medium hover:underline"
-                          >
-                            Report
-                          </button>
-                        )}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -407,35 +501,73 @@ export default function CustomerPage() {
     );
   };
 
-  // ── INVENTORY ──────────────────────────────────────────────────────────────
-  const renderInventory = () => (
-    <div className={`rounded-2xl border overflow-hidden ${card}`}>
-      <div className={`px-6 py-5 border-b ${border}`}>
-        <div className={`font-bold text-lg ${text}`}>Registered Water Jugs</div>
-        <div className={`text-sm mt-0.5 ${muted}`}>Manage containers assigned to your profile</div>
+  // ── INVENTORY (UPDATED) ─────────────────────────────────────────────────────
+  const renderInventory = () => {
+    const activeJugs = jugs.filter(j => j.status?.toUpperCase() === 'ACTIVE');
+    const inactiveJugs = jugs.filter(j => j.status?.toUpperCase() !== 'ACTIVE');
+
+    const JugSection = ({ title, items, isEmpty }) => (
+      <div className={`rounded-2xl border overflow-visible ${card}`}>
+        <div className={`px-6 py-4 border-b flex items-center justify-between ${border}`}>
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`w-2 h-2 rounded-full ${title === 'Active Jugs'
+                ? 'bg-emerald-500'
+                : D ? 'bg-slate-600' : 'bg-slate-400'
+                }`}
+            />
+            <span className={`font-bold ${text}`}>{title}</span>
+            <span
+              className={`text-xs px-2 py-0.5 rounded-full font-semibold ${title === 'Active Jugs'
+                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                : D ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'
+                }`}
+            >
+              {items.length}
+            </span>
+          </div>
+        </div>
+
+        {isEmpty || items.length === 0 ? (
+          <div className={`px-6 py-8 text-sm text-center ${muted}`}>
+            No {title.toLowerCase()} right now.
+          </div>
+        ) : (
+          <div className={`divide-y ${D ? 'divide-slate-800' : 'divide-slate-100'}`}>
+            {items.map(jug => (
+              <JugCard
+                key={jug.id}
+                jug={jug}
+                dark={dark}
+                theme={theme}
+                onToggleStatus={toggleJugStatus}
+                onUpdateFreq={handleFreqUpdate}   // ← new prop
+              />
+            ))}
+          </div>
+        )}
       </div>
-      <div className={`divide-y ${D ? 'divide-slate-800' : 'divide-slate-100'}`}>
-        {jugs.map(jug => (
-          <JugCard
-            key={jug.id}
-            jug={jug}
-            dark={dark}
-            theme={theme}
-            onToggleStatus={toggleJugStatus}
-            onOpenFreqModal={openFreqModal}
-          />
-        ))}
+    );
+
+    return (
+      <div className="space-y-5">
+        <div className="px-1">
+          <div className={`font-bold text-lg ${text}`}>Registered Water Jugs</div>
+          <div className={`text-sm mt-0.5 ${muted}`}>Manage containers assigned to your profile</div>
+        </div>
+
+        <JugSection title="Active Jugs" items={activeJugs} />
+        <JugSection title="Inactive Jugs" items={inactiveJugs} isEmpty={inactiveJugs.length === 0} />
       </div>
-    </div>
-  );
+    );
+  };
 
   const handleLogout = async () => {
     await API.post('logout/');
     navigate('/');
   };
 
-
-  // ── PROFILE ────────────────────────────────────────────────────────────────
+  // ── PROFILE (unchanged) ─────────────────────────────────────────────────────
   const renderProfile = () => (
     <div className="mx-auto space-y-5 max-w-2xl">
       {/* Personal info */}
@@ -491,18 +623,13 @@ export default function CustomerPage() {
                     <span className={`text-sm font-bold ${text}`}>{addr.label}</span>
                     {addr.is_default && <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">Default</span>}
                   </div>
-                  <div className={`text-xs leading-snug ${muted}`}>{addr.full_address}
-                  </div>
+                  <div className={`text-xs leading-snug ${muted}`}>{addr.full_address}</div>
                 </div>
               </div>
               <button
-                onClick={() => {
-                  setEditingAddress(addr);
-                  setShowAddAddressModal(true);
-                }}
+                onClick={() => { setEditingAddress(addr); setShowAddAddressModal(true); }}
                 className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors text-blue-500 ${D ? 'hover:bg-slate-700' : 'hover:bg-blue-50'}`}
-              >Edit
-              </button>
+              >Edit</button>
             </div>
           ))}
         </div>
@@ -587,7 +714,6 @@ export default function CustomerPage() {
                 </>
               )}
             </div>
-
           </div>
         </div>
 
@@ -604,25 +730,15 @@ export default function CustomerPage() {
       </header>
 
       {/* ── CONTENT ─────────────────────────────────────────────────────── */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 pb-24" style={{ animation: 'slideUp 0.22s ease' }}>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 pb-24">
         {activeTab === 'dashboard' && renderDashboard()}
         {activeTab === 'orders' && renderOrders()}
         {activeTab === 'inventory' && renderInventory()}
         {activeTab === 'profile' && renderProfile()}
-        {error && (<div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-center gap-2"> 
+        {error && (<div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-center gap-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />{error}
-    </div>
-  )}
+        </div>)}
       </main>
-
-      {/* ── FAB ─────────────────────────────────────────────────────────── */}
-      <button
-        onClick={() => setShowRefillModal(true)}
-        title="Quick Refill"
-        className="fixed bottom-6 right-6 z-40 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-2xl shadow-blue-500/40 transition-all hover:scale-110 active:scale-95"
-      >
-        <Icon path={IC.refresh} className="w-6 h-6" />
-      </button>
 
       {/* ── CHATBOT TOGGLE ──────────────────────────────────────────────── */}
       <button
@@ -654,9 +770,9 @@ export default function CustomerPage() {
           <div>
             <label className={`block text-xs font-bold uppercase tracking-wider mb-3 ${muted}`}>1. Select Jug</label>
             <div className="space-y-2">
-              {jugs.filter(j => j.status === 'Active').map(j => (
+              {jugs.filter(j => j.status === 'Active' && !activeRefillJugIds.has(j.db_id)).map(j => (
                 <button key={j.id} onClick={() => setSelectedJugForRefill(j)}
-                  className={`w-full p-4 rounded-xl border-2 text-left flex items-center gap-3 transition-all ${selectedJugForRefill === j.id
+                  className={`w-full p-4 rounded-xl border-2 text-left flex items-center gap-3 transition-all ${selectedJugForRefill?.id === j.id
                     ? 'border-blue-500 ' + (D ? 'bg-blue-900/20' : 'bg-blue-50')
                     : D ? 'border-slate-700 hover:border-slate-500' : 'border-slate-200 hover:border-blue-300'
                     }`}>
@@ -722,13 +838,11 @@ export default function CustomerPage() {
               setSelectedJugForRefill(null);
               setSelectedAddress(null);
             }}
-
             className={`w-full py-3.5 rounded-xl font-bold text-sm transition-all ${selectedJugForRefill && selectedAddress
               ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20'
               : D ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
               }`}
           >
-
             Confirm Refill Order
           </button>
         </div>
@@ -742,7 +856,6 @@ export default function CustomerPage() {
         dark={D}
       >
         <div className="p-6 space-y-3">
-          {/* Address picker for new jug */}
           <div>
             <label className={`block text-xs font-bold uppercase tracking-wider mb-3 ${muted}`}>1. Delivery Address</label>
             <div className="space-y-2">
@@ -772,8 +885,12 @@ export default function CustomerPage() {
                 ? 'border-blue-500 ' + (D ? 'bg-blue-900/20' : 'bg-blue-50')
                 : D ? 'border-slate-700 hover:border-slate-600' : 'border-slate-200 hover:border-blue-300'
                 }`}>
-              <div className={`p-3 rounded-xl flex-shrink-0 ${D ? 'bg-blue-900/40' : 'bg-blue-50'}`}>
-                <Icon path={IC.droplet} className="w-6 h-6 text-blue-500" />
+              <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-slate-100 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700">
+                {jt.image ? (
+                  <img src={jt.image.startsWith('http') ? jt.image : `http://localhost:8000${jt.image}`} alt={jt.type_name} className="w-full h-full object-cover" />
+                ) : (
+                  <Icon path={IC.droplet} className="w-6 h-6 text-blue-500" />
+                )}
               </div>
               <div className="flex-1">
                 <div className={`font-bold ${D ? 'text-white' : 'text-slate-800'}`}>{jt.type_name}</div>
@@ -811,45 +928,32 @@ export default function CustomerPage() {
         </div>
       </Modal>
 
-      {/* Frequency Edit */}
-      <FrequencyEditModal
-        show={showFreqModal}
-        onClose={() => { setShowFreqModal(false); setFreqJug(null); }}
-        onContinue={() => { setShowFreqModal(false); setShowFreqConfirm(true); }}
-        freqJug={freqJug}
-        pendingFreq={pendingFreq}
-        setPendingFreq={setPendingFreq}
-        dark={D}
-        theme={theme}
-      />
-
-      {/* Frequency Confirm */}
+      {/* Frequency Confirm Toggle (NEW) */}
       <ConfirmDialog
-        show={showFreqConfirm}
-        onClose={() => { setShowFreqConfirm(false); setFreqJug(null); }}
-        onBack={() => { setShowFreqConfirm(false); setShowFreqModal(true); }}
-        onConfirm={confirmFreq}
-        title="Confirm Update"
+        show={showFreqConfirmToggle}
+        onClose={() => { setShowFreqConfirmToggle(false); setFreqToggleJug(null); setFreqTogglePending(null); }}
+        onBack={() => { setShowFreqConfirmToggle(false); }}
+        onConfirm={confirmFreqToggle}
+        title="Confirm Schedule Change"
         confirmText="Yes, Update"
         dark={D}
         theme={theme}
         bannerMessage={
-          <>
-            Are you sure you want to update the refill frequency
-            {freqJug && <> for <strong className="font-mono">{freqJug.id}</strong></>} to{' '}
-            <strong>{pendingFreq}</strong>?
-          </>
+          freqTogglePending && freqToggleJug && (
+            <>
+              {freqTogglePending.enabled
+                ? <>Set refill schedule for <strong className="font-mono">{freqToggleJug.id}</strong> to every <strong>{freqTogglePending.days} day{freqTogglePending.days === 1 ? '' : 's'}</strong>?</>
+                : <>Disable the refill schedule for <strong className="font-mono">{freqToggleJug.id}</strong>?</>
+              }
+            </>
+          )
         }
       />
 
       {/* Add Address */}
       <AddAddressModal
         show={showAddAddressModal}
-        onClose={() => {
-          setShowAddAddressModal(false);
-          setEditingAddress(null);
-          setPendingAddressData(null);
-        }}
+        onClose={() => { setShowAddAddressModal(false); setEditingAddress(null); setPendingAddressData(null); }}
         onContinue={handleAddAddressContinue}
         initialData={editingAddress}
         dark={D}
@@ -862,12 +966,12 @@ export default function CustomerPage() {
         onClose={() => { setShowConfirmAddressModal(false); setPendingAddressData(null); }}
         onBack={() => { setShowConfirmAddressModal(false); setShowAddAddressModal(true); }}
         onConfirm={handleConfirmAddress}
-        title={editingAddress ? "Save address changes?" : "Add address to your profile?"}  // ← dynamic
+        title={editingAddress ? "Save address changes?" : "Add address to your profile?"}
         message={editingAddress
           ? "Your address will be updated."
           : "This address will be added to your profile and can be selected for future deliveries."
         }
-        confirmText={editingAddress ? "Save Changes" : "Add Address"}  // ← dynamic
+        confirmText={editingAddress ? "Save Changes" : "Add Address"}
         isDangerous
         dark={D}
         theme={theme}
@@ -887,10 +991,7 @@ export default function CustomerPage() {
       {/* Edit Profile */}
       <EditProfileModal
         show={showEditProfileModal}
-        onClose={() => {
-          setShowEditProfileModal(false);
-          setPendingProfileData(null);
-        }}
+        onClose={() => { setShowEditProfileModal(false); setPendingProfileData(null); }}
         onContinue={handleEditProfileContinue}
         profileData={profile}
         dark={D}
@@ -914,89 +1015,6 @@ export default function CustomerPage() {
           { label: "Phone Number", value: pendingProfileData.phone, mono: true },
         ] : []}
       />
-
-      {/* ── REPORT JUG MODAL ──────────────────────────────────────────── */}
-      <Modal
-        show={showReportModal}
-        onClose={() => { setShowReportModal(false); setReportOrder(null); }}
-        title="Report an Issue"
-        dark={D}
-        maxWidth="max-w-md"
-      >
-        <div className="p-6 space-y-5">
-          <p className={`text-sm ${muted}`}>
-            Reporting an issue for order <span className={`font-mono font-bold ${text}`}>#{reportOrder?.id}</span>.
-          </p>
-
-          <div>
-            <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${muted}`}>Issue Type</label>
-            <select
-              value={reportForm.report_type}
-              onChange={e => setReportForm(f => ({ ...f, report_type: e.target.value }))}
-              className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium outline-none transition-colors ${inp}`}
-            >
-              <option value="Not Delivered">Not Delivered</option>
-              <option value="Lost">Lost</option>
-              <option value="Broken">Broken</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-
-          <div>
-            <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${muted}`}>Description</label>
-            <textarea
-              rows={4}
-              placeholder="Describe the issue in detail…"
-              value={reportForm.description}
-              onChange={e => setReportForm(f => ({ ...f, description: e.target.value }))}
-              className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium outline-none transition-colors resize-none ${inp}`}
-            />
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => { setShowReportModal(false); setReportOrder(null); }}
-              className={`flex-1 py-2.5 rounded-xl border font-semibold text-sm transition-colors ${D ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}
-            >
-              Cancel
-            </button>
-            <button
-              disabled={!reportForm.description.trim() || reportSubmitting}
-              onClick={async () => {
-                if (!reportForm.description.trim() || !reportOrder) return;
-                const jugId = reportOrder.reportJugId;
-                if (!jugId) {
-                  alert('No jug found for this order.');
-                  return;
-                }
-                setReportSubmitting(true);
-                try {
-                  await API.post('jug-reports/', {
-                    jug: jugId,
-                    report_type: reportForm.report_type,
-                    description: reportForm.description,
-                  });
-                  setShowReportModal(false);
-                  setReportOrder(null);
-                  setReportForm({ report_type: 'Not Delivered', description: '' });
-                  alert('Report submitted successfully. Our team will follow up.');
-                } catch (err) {
-                  console.error('Report failed:', err.response?.data || err);
-                  showError('Failed to submit report. Please try again.');
-                } finally {
-                  setReportSubmitting(false);
-                }
-              }}
-              className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all ${reportForm.description.trim() && !reportSubmitting
-                ? 'bg-red-600 hover:bg-red-700 text-white shadow-md'
-                : D ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
-            >
-              {reportSubmitting ? 'Submitting…' : 'Submit Report'}
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

@@ -3,19 +3,19 @@ import { MapPin, Phone, Package, Navigation, CheckCircle } from 'lucide-react';
 
 // Must match backend Order.Status choices exactly
 const DELIVERY_STATUSES = [
-  { label: 'Order Placed',      value: 'Ordered' },
-  { label: 'To Be Picked Up',   value: 'To Be Picked Up' },
-  { label: 'Refilling',         value: 'Refilling' },
-  { label: 'On The Way',        value: 'On The Way' },
-  { label: 'Delivered',         value: 'Delivered' },
+  { label: 'Order Placed', value: 'Ordered' },
+  { label: 'To Be Picked Up', value: 'To Be Picked Up' },
+  { label: 'Refilling', value: 'Refilling' },
+  { label: 'On The Way', value: 'On The Way' },
+  { label: 'Delivered', value: 'Delivered' },
 ];
 
 export function DeliveryCard({ order, onStatusUpdate, onComplete, dark }) {
   const D = dark;
 
-  const cardBg   = D ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
-  const text      = D ? 'text-slate-100' : 'text-slate-800';
-  const muted     = D ? 'text-slate-400' : 'text-slate-500';
+  const cardBg = D ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
+  const text = D ? 'text-slate-100' : 'text-slate-800';
+  const muted = D ? 'text-slate-400' : 'text-slate-500';
   const stepperBg = D ? 'bg-slate-800' : 'bg-slate-50';
 
   const itemSummary = order.items?.map(i =>
@@ -80,13 +80,12 @@ export function DeliveryCard({ order, onStatusUpdate, onComplete, dark }) {
             <button
               key={s.value}
               onClick={() => onStatusUpdate(order.id, s.value)}
-              className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                order.status === s.value
+              className={`text-xs px-3 py-1 rounded-full border transition-colors ${order.status === s.value
                   ? 'bg-blue-600 text-white border-blue-600'
                   : D
                     ? 'bg-slate-700 text-slate-300 border-slate-600 hover:border-blue-400 hover:text-blue-400'
                     : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-600'
-              }`}
+                }`}
             >
               {s.label}
             </button>
@@ -109,13 +108,14 @@ export function DeliveryCard({ order, onStatusUpdate, onComplete, dark }) {
             Call
           </a>
         )}
-        <button
+        {onComplete && (<button
           onClick={() => onComplete(order.id)}
           title="Mark as Delivered"
           className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
         >
           <CheckCircle className="w-5 h-5" />
         </button>
+        )}
       </div>
     </div>
   );

@@ -24,6 +24,10 @@ const ORDER_STATUS_OPTIONS = [
   'Delivered',
   'Cancelled',
 ];
+
+// Statuses that warrant a confirmation before applying
+const CONFIRM_STATUSES = new Set(['Delivered', 'Cancelled']);
+
 const ACTIVE_STATUSES = new Set(['Ordered', 'To Be Picked Up', 'Refilling', 'On The Way']);
 
 export function AdminDashboard() {
@@ -34,16 +38,16 @@ export function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
 
   // ── Real data state ─────────────────────────────────────────────────────────
-  const [orders, setOrders] = useState([]);  // all orders from API
+  const [orders, setOrders] = useState([]);
   const [jugTypes, setJugTypes] = useState([]);
   const [jugs, setJugs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const showError = (message) => {setError(message); setTimeout(() => setError(null), 7000);};
+  const showError = (message) => { setError(message); setTimeout(() => setError(null), 7000); };
 
-  // ── Modal state ──────────────────────────────────────────────────────────────
+  // ── Modal / confirm state ────────────────────────────────────────────────────
   const [isAddJugTypeModalOpen, setIsAddJugTypeModalOpen] = useState(false);
   const [isEditJugTypeModalOpen, setIsEditJugTypeModalOpen] = useState(false);
   const [selectedJugType, setSelectedJugType] = useState(null);
@@ -53,19 +57,26 @@ export function AdminDashboard() {
   const [jugTypeToEdit, setJugTypeToEdit] = useState(null);
   const [auditSearchTerm, setAuditSearchTerm] = useState('');
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+
+  // Jug naming
   const [jugNames, setJugNames] = useState({});
   const [namingOrder, setNamingOrder] = useState(null);
+  const [confirmedNames, setConfirmedNames] = useState({});
+  const [nameConfirmDialog, setNameConfirmDialog] = useState(null);
+
+  // ── NEW: confirm dialogs for status update, delivery complete, logout ────────
+  const [statusConfirm, setStatusConfirm] = useState(null);
+  // { orderId, newStatus } — pending confirmation
+
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
 
   // ── Derived slices ───────────────────────────────────────────────────────────
   const activeOrders = orders.filter(o => ACTIVE_STATUSES.has(o.status));
   const historyOrders = orders.filter(o => o.status === 'Delivered');
 
-  // Jug status counts from real data
   const jugStatusData = [
     { name: 'Active', value: jugs.filter(j => j.status === 'Active').length, color: '#10b981' },
     { name: 'Inactive', value: jugs.filter(j => j.status === 'Inactive').length, color: '#64748b' },
-    { name: 'Lost', value: jugs.filter(j => j.status === 'Lost').length, color: '#ef4444' },
-    { name: 'Broken', value: jugs.filter(j => j.status === 'Broken').length, color: '#f59e0b' },
   ];
 
   // ── Data loading ─────────────────────────────────────────────────────────────
@@ -84,8 +95,6 @@ export function AdminDashboard() {
       setJugTypes(jugTypesRes.data);
       setJugs(jugsRes.data);
       setAuditLogs(auditRes.data);
-      // also set profile properly
-      setProfile(profileRes.data);
     } catch (err) {
       console.error('Failed to load admin data:', err);
       showError('Failed to load data. Please refresh.');
@@ -112,20 +121,23 @@ export function AdminDashboard() {
   const rowBorder = D ? 'border-slate-800' : 'border-slate-100';
 
   // ── Logout ───────────────────────────────────────────────────────────────────
-  const handleLogout = async () => {
+  const handleLogout = () => setIsLogoutConfirmOpen(true);
+
+  const confirmLogout = async () => {
     await API.post('logout/');
     navigate('/');
   };
 
-  // ── Order status update ──────────────────────────────────────────────────────
-  const updateOrderStatus = async (orderId, newStatus) => {
+  // ── Order status update (core) ───────────────────────────────────────────────
+  const applyOrderStatus = async (orderId, newStatus) => {
+    // Guard: unnamed new jugs block "On The Way"
     if (newStatus === 'On The Way') {
       const order = orders.find(o => o.id === orderId);
       const newJugItems = (order?.items ?? []).filter(i => i.item_type === 'New Jug');
       const names = jugNames[orderId] ?? {};
-      const allNamed = newJugItems.every((_, idx) => (names[idx] ?? '').trim() !== '');
-      if (newJugItems.length > 0 && !allNamed) {
-        showError('Please name all new jugs before marking this order as "On The Way".');
+      const isConfirmed = confirmedNames[orderId];
+      if (newJugItems.length > 0 && !isConfirmed) {
+        showError('Please confirm the jug names before marking this order as "On The Way".');
         return;
       }
     }
@@ -133,30 +145,24 @@ export function AdminDashboard() {
     try {
       await API.patch(`orders/${orderId}/status/`, { status: newStatus });
       setOrders(prev => prev.map(o =>
-        o.id === orderId ? { ...o, status: newStatus } : o
-      ));
+        o.id === orderId ? { ...o, status: newStatus } : o));
+      await loadAll();
 
+      // On delivery, flush jug names to the backend
       if (newStatus === 'Delivered') {
         const names = jugNames[orderId] ?? {};
         if (Object.keys(names).length > 0) {
           const orderRes = await API.get(`orders/${orderId}/`);
           const items = orderRes.data.items ?? [];
-
           for (let idx = 0; idx < items.length; idx++) {
             const item = items[idx];
             const name = names[idx]?.trim();
             if (item.item_type === 'New Jug' && name && item.generated_jug) {
-              await API.patch(`jugs/${item.generated_jug}/`, {
-                jug_label: name,
-              });
+              await API.patch(`jugs/${item.generated_jug}/`, { jug_label: name });
             }
           }
-
-          setJugNames(prev => {
-            const updated = { ...prev };
-            delete updated[orderId];
-            return updated;
-          });
+          setJugNames(prev => { const u = { ...prev }; delete u[orderId]; return u; });
+          setConfirmedNames(prev => { const u = { ...prev }; delete u[orderId]; return u; });
           setNamingOrder(null);
         }
       }
@@ -166,8 +172,34 @@ export function AdminDashboard() {
     }
   };
 
-  // Delivery card complete → mark Delivered
-  const handleDeliveryComplete = (orderId) => updateOrderStatus(orderId, 'Delivered');
+  const openNameConfirm = (orderId) => {
+    setNameConfirmDialog({ orderId, names: jugNames[orderId] ?? {} });
+  };
+
+  const closeNameConfirm = () => setNameConfirmDialog(null);
+
+  const confirmNames = () => {
+    if (!nameConfirmDialog) return;
+    const { orderId } = nameConfirmDialog;
+    setConfirmedNames(prev => ({ ...prev, [orderId]: true }));
+    setNamingOrder(null); // close naming panel
+    closeNameConfirm();
+  };
+
+  // ── Status update entry point — confirms for Delivered / Cancelled ───────────
+  const updateOrderStatus = (orderId, newStatus) => {
+    if (CONFIRM_STATUSES.has(newStatus)) {
+      setStatusConfirm({ orderId, newStatus });
+    } else {
+      applyOrderStatus(orderId, newStatus);
+    }
+  };
+
+  const confirmStatusUpdate = () => {
+    if (!statusConfirm) return;
+    applyOrderStatus(statusConfirm.orderId, statusConfirm.newStatus);
+    setStatusConfirm(null);
+  };
 
   // ── Jug type CRUD ────────────────────────────────────────────────────────────
   const handleAddJugType = async (formData) => {
@@ -202,26 +234,28 @@ export function AdminDashboard() {
   const handleSaveEditJugType = (updatedForm) => {
     setJugTypeToEdit(updatedForm);
     setIsEditConfirmOpen(true);
+    setIsEditJugTypeModalOpen(false);
   };
 
   const confirmEditJugType = async () => {
     if (!jugTypeToEdit) return;
     try {
       const payload = new FormData();
+      const cleanPrice = (price) => String(price).replace(/[^\d.]/g, '');
+
       payload.append('type_name', jugTypeToEdit.typeName ?? jugTypeToEdit.type_name ?? '');
       payload.append('gallon_capacity', jugTypeToEdit.capacity ?? jugTypeToEdit.gallon_capacity ?? '');
-      payload.append('purchase_price', jugTypeToEdit.purchasePrice ?? jugTypeToEdit.purchase_price ?? '');
-      payload.append('refill_price', jugTypeToEdit.refillPrice ?? jugTypeToEdit.refill_price ?? '');
+      payload.append('purchase_price', cleanPrice(jugTypeToEdit.purchasePrice ?? jugTypeToEdit.purchase_price ?? ''));
+      payload.append('refill_price', cleanPrice(jugTypeToEdit.refillPrice ?? jugTypeToEdit.refill_price ?? ''));
       payload.append('description', jugTypeToEdit.description ?? '');
       payload.append('is_available', (jugTypeToEdit.isAvailable ?? jugTypeToEdit.is_available) ? 'true' : 'false');
       if (jugTypeToEdit.image) payload.append('image', jugTypeToEdit.image);
 
-      await API.put(`jug-types/${selectedJugType.id}/`, payload, {
+      await API.patch(`jug-types/${selectedJugType.id}/`, payload, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       const res = await API.get('jug-types/');
       setJugTypes(res.data);
-      setIsEditJugTypeModalOpen(false);
       setIsEditConfirmOpen(false);
       setSelectedJugType(null);
       setJugTypeToEdit(null);
@@ -246,6 +280,24 @@ export function AdminDashboard() {
     } catch (err) {
       console.error('Failed to delete jug type:', err.response?.data || err);
       showError('Failed to delete jug type. It may be referenced by existing orders.');
+    }
+  };
+
+  const downloadReport = async (period) => {
+    try {
+      const response = await API.get(`reports/download/?period=${period}`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${period}_report.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      showError('Failed to download report.');
     }
   };
 
@@ -350,7 +402,9 @@ export function AdminDashboard() {
           const hasNewJugs = newJugItems.length > 0;
           const names = jugNames[order.id] ?? {};
           const allNamed = newJugItems.every((_, idx) => (names[idx] ?? '').trim() !== '');
+          const canConfirm = allNamed;
           const isNaming = namingOrder === order.id;
+
 
           return (
             <div key={order.id}>
@@ -358,7 +412,6 @@ export function AdminDashboard() {
                 order={order}
                 dark={dark}
                 onStatusUpdate={updateOrderStatus}
-                onComplete={handleDeliveryComplete}
               />
 
               {/* Naming panel – only for orders with New Jug items */}
@@ -373,16 +426,35 @@ export function AdminDashboard() {
                           : `Name new jug${newJugItems.length > 1 ? 's' : ''} before "On The Way"`}
                       </span>
                     </div>
-                    <button
-                      onClick={() => setNamingOrder(isNaming ? null : order.id)}
-                      className={`text-xs px-3 py-1 rounded-full font-semibold transition-colors ${
-                        allNamed
-                          ? D ? 'bg-green-900/40 text-green-400 hover:bg-green-900/60' : 'bg-green-100 text-green-700 hover:bg-green-200'
-                          : D ? 'bg-amber-900/40 text-amber-300 hover:bg-amber-900/60' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                      }`}
-                    >
-                      {isNaming ? 'Close' : allNamed ? 'Edit Names' : 'Name Jugs'}
-                    </button>
+                    {!isNaming ? (
+                      <button
+                        onClick={() => setNamingOrder(order.id)}
+                        className={`text-xs px-3 py-1 rounded-full font-semibold transition-colors ${D ? 'bg-amber-900/40 text-amber-300 hover:bg-amber-900/60' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                          }`}
+                      >
+                        {allNamed ? 'Edit Name' : 'Name Jugs'}
+                      </button>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setNamingOrder(null)}
+                          className={`text-xs px-3 py-1 rounded-full font-semibold transition-colors ${D ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                            }`}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          disabled={!allNamed}
+                          onClick={() => openNameConfirm(order.id)}
+                          className={`text-xs px-3 py-1 rounded-full font-semibold transition-colors ${allNamed
+                            ? 'bg-blue-600 text-white hover:bg-blue-700'
+                            : D ? 'bg-slate-700 text-slate-600 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                            }`}
+                        >
+                          Confirm Name
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {isNaming && (
@@ -392,7 +464,7 @@ export function AdminDashboard() {
                         return (
                           <div key={item.id ?? idx} className="flex items-center gap-2">
                             <span className={`text-xs w-20 flex-shrink-0 ${muted}`}>
-                              Jug {idx + 1}{newJugItems.length > 1 ? ` (${item.jug_type?.type_name ?? ''})` : ''}
+                              Jug {idx + 1}{newJugItems.length > 1 ? ` (${item.jug_type_name ?? ''})` : ''}
                             </span>
                             <input
                               type="text"
@@ -416,7 +488,6 @@ export function AdminDashboard() {
             </div>
           );
         })
-        
       )}
     </div>
   );
@@ -453,16 +524,16 @@ export function AdminDashboard() {
               <tr className={`border-b ${theadBg} ${border}`}>
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Order ID</th>
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Customer</th>
+                <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Jug Label</th>
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Status</th>
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Amount</th>
                 <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Date</th>
-                <th className={`text-left py-3 px-4 text-sm ${theadTxt}`}>Update Status</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className={`py-12 text-center text-sm ${muted}`}>Loading…</td>
+                  <td colSpan={5} className={`py-12 text-center text-sm ${muted}`}>Loading…</td>
                 </tr>
               ) : orders
                 .filter(o =>
@@ -475,21 +546,11 @@ export function AdminDashboard() {
                   <tr key={order.id} className={`border-b ${rowBorder} ${rowHov}`}>
                     <td className={`py-3 px-4 text-sm font-mono font-bold ${text}`}>#{order.id}</td>
                     <td className={`py-3 px-4 text-sm ${text}`}>{order.customer_name || order.customer_email}</td>
+                    <td className={`py-3 px-4 text-xs ${muted}`}> {order.items?.length > 0 ? order.items.map(item => item.jug_label || item.jug?.unique_id || '—').join(', ') : '—'} </td>
                     <td className="py-3 px-4"><OrderStatusBadge status={order.status} /></td>
                     <td className={`py-3 px-4 text-sm font-semibold ${text}`}>₱{order.price_snapshot}</td>
                     <td className={`py-3 px-4 text-sm ${muted}`}>
                       {order.created_at ? new Date(order.created_at).toLocaleString() : '—'}
-                    </td>
-                    <td className="py-3 px-4">
-                      <select
-                        value={order.status}
-                        onChange={(e) => updateOrderStatus(order.id, e.target.value)}
-                        className={`text-xs border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 ${inp}`}
-                      >
-                        {ORDER_STATUS_OPTIONS.map(s => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
                     </td>
                   </tr>
                 ))}
@@ -513,6 +574,7 @@ export function AdminDashboard() {
             subtextColor="text-green-600"
             icon={CheckCircle}
             iconColor="text-green-600"
+            dark={dark}
           />
           <StatCard
             label="Total Orders"
@@ -521,13 +583,33 @@ export function AdminDashboard() {
             subtextColor="text-blue-600"
             icon={History}
             iconColor="text-blue-600"
+            dark={dark}
           />
           <StatCard
             label="Completion Rate"
             value={orders.length > 0 ? `${Math.round((historyOrders.length / orders.length) * 100)}%` : '—'}
             icon={CheckCircle}
             iconColor="text-purple-600"
+            dark={dark}
           />
+        </div>
+
+        <div className="flex items-center gap-4 mt-2">
+          <span className={`text-sm font-semibold ${muted}`}>Download Earnings Report:</span>
+          <button
+            onClick={() => downloadReport('week')}
+            className={`text-xs px-4 py-2 rounded-lg font-semibold transition-colors ${D ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+          >
+            This Week's Report
+          </button>
+          <button
+            onClick={() => downloadReport('month')}
+            className={`text-xs px-4 py-2 rounded-lg font-semibold transition-colors ${D ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+          >
+            This Month's Report
+          </button>
         </div>
 
         <div className={`rounded-xl border shadow-sm overflow-hidden ${card}`}>
@@ -612,7 +694,20 @@ export function AdminDashboard() {
                 </tr>
               ) : jugTypes.map((jt) => (
                 <tr key={jt.id} className={`border-b ${rowBorder} ${rowHov}`}>
-                  <td className={`py-3 px-4 text-sm font-semibold ${text}`}>{jt.type_name}</td>
+                  <td className={`py-3 px-4 text-sm font-semibold ${text}`}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center flex-shrink-0">
+                        {jt.image ? (
+                          <img src={jt.image.startsWith('http') ? jt.image : `http://localhost:8000${jt.image}`} alt={jt.type_name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-4 h-4 text-blue-500 flex items-center justify-center">
+                            <Icon path={IC.droplet} className="w-4 h-4" />
+                          </div>
+                        )}
+                      </div>
+                      <span>{jt.type_name}</span>
+                    </div>
+                  </td>
                   <td className={`py-3 px-4 text-sm ${text}`}>{jt.gallon_capacity}</td>
                   <td className={`py-3 px-4 text-sm ${text}`}>₱{jt.purchase_price}</td>
                   <td className={`py-3 px-4 text-sm ${text}`}>₱{jt.refill_price}</td>
@@ -792,6 +887,14 @@ export function AdminDashboard() {
     { id: 'audit', label: 'Audit Logs', icon: FileText },
   ];
 
+  // ── Status confirm dialog helpers ─────────────────────────────────────────────
+  const statusConfirmOrder = statusConfirm ? orders.find(o => o.id === statusConfirm.orderId) : null;
+  const isStatusDangerous = statusConfirm?.newStatus === 'Cancelled';
+  const statusConfirmMessage = statusConfirm
+    ? `Change order #${statusConfirm.orderId} (${statusConfirmOrder?.customer_name || statusConfirmOrder?.customer_email || ''}) to "${statusConfirm.newStatus}"?${statusConfirm.newStatus === 'Cancelled' ? ' This will cancel the order.' : ' This will mark the order as delivered.'
+    }`
+    : ''
+
   return (
     <div className={`min-h-screen transition-colors duration-300 ${bg}`}>
 
@@ -900,6 +1003,53 @@ export function AdminDashboard() {
         {activeTab === 'jugs' && renderJugs()}
         {activeTab === 'audit' && renderAuditLogs()}
       </div>
+
+      {/* ── GLOBAL CONFIRM DIALOGS ───────────────────────────────────────── */}
+      {/* Confirm Jug Names Dialog */}
+      <ConfirmDialog
+        isOpen={!!nameConfirmDialog}
+        onClose={closeNameConfirm}
+        onConfirm={confirmNames}
+        title="Confirm Jug Names"
+        message={`Assign these names to the new jugs for order #${nameConfirmDialog?.orderId}?`}
+        confirmText="Confirm Names"
+        cancelText="Go Back"
+        isDangerous={false}
+        dark={dark}
+        previewData={
+          nameConfirmDialog
+            ? Object.entries(nameConfirmDialog.names).map(([idx, name]) => ({
+              label: `Jug ${Number(idx) + 1}`,
+              value: name,
+            }))
+            : []
+        }
+      />
+      {/* Logout */}
+      <ConfirmDialog
+        isOpen={isLogoutConfirmOpen}
+        onClose={() => setIsLogoutConfirmOpen(false)}
+        onConfirm={confirmLogout}
+        title="Log Out"
+        message="Are you sure you want to log out?"
+        confirmText="Log Out"
+        cancelText="Stay"
+        isDangerous={false}
+        dark={dark}
+      />
+
+      {/* Order status change (Delivered / Cancelled) */}
+      <ConfirmDialog
+        isOpen={!!statusConfirm}
+        onClose={() => setStatusConfirm(null)}
+        onConfirm={confirmStatusUpdate}
+        title={statusConfirm?.newStatus === 'Cancelled' ? 'Cancel Order' : 'Mark as Delivered'}
+        message={statusConfirmMessage}
+        confirmText={statusConfirm?.newStatus === 'Cancelled' ? 'Yes, Cancel Order' : 'Yes, Mark Delivered'}
+        cancelText="Go Back"
+        isDangerous={isStatusDangerous}
+        dark={dark}
+      />
     </div>
   );
 }

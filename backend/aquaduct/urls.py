@@ -5,9 +5,8 @@ from .views import (
     CustomTokenObtainPairView, RegisterView, UserProfileView, CookieTokenRefreshView, LogoutView,      
     AddressListCreateView, AddressDetailView, JugTypeListCreateView, JugTypeDetailView, JugListCreateView,
     JugDetailView, RefillScheduleDetailView, OrderListCreateView, OrderDetailView, OrderStatusUpdateView,
-    OrderETAUpdateView, 
-    PaymentListCreateView, PaymentDetailView, NotificationListView, JugReportListCreateView,
-    AdminAuditLogListView, UserProfileChangeLogView,
+    OrderETAUpdateView, NotificationListView, CustomerConsumptionView, AdminAuditLogListView, 
+    UserProfileChangeLogView, OrderReportDownloadView,
 )
 
 urlpatterns = [
@@ -37,18 +36,13 @@ urlpatterns = [
     path('orders/<int:pk>/status/', OrderStatusUpdateView.as_view(), name='order-status-update'),
     path('orders/<int:pk>/eta/', OrderETAUpdateView.as_view(), name='order-eta-update'),
 
-    # Payments
-    path('payments/', PaymentListCreateView.as_view(), name='payment-list'),
-    path('payments/<int:pk>/', PaymentDetailView.as_view(), name='payment-detail'),
-
     # Notifications
     path('notifications/', NotificationListView.as_view(), name='notification-list'),
-
-    # Jug Reports
-    path('jug-reports/', JugReportListCreateView.as_view(), name='jugreport-list'),
+    path('consumption/', CustomerConsumptionView.as_view(), name='customer-consumption'),
 
     # Admin Audit Logs
     path('admin/audit-logs/', AdminAuditLogListView.as_view(), name='admin-audit-logs'),
+    path('reports/download/', OrderReportDownloadView.as_view(), name='order-report-download'),
     path('profile/history/', UserProfileChangeLogView.as_view(), name='profile-change-log'),
     path('logout/', LogoutView.as_view(), name='logout'),
     path('token/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),

@@ -13,19 +13,24 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django_ratelimit.decorators import ratelimit
 from datetime import timedelta
+from django.db.models import Count
+from django.db.models.functions import TruncMonth
+from django.http import HttpResponse
+import uuid
+import csv
+
 # pyrefly: ignore [missing-import]
 from .models import (
     User, Address,
     JugType, Jug, RefillSchedule, Order, OrderItem,
-    OrderStatusHistory, Payment, Notification, JugReport, AdminAuditLog, ProfileChangeLog
+    OrderStatusHistory, Notification, AdminAuditLog, ProfileChangeLog
 )
 
 # pyrefly: ignore [missing-import]
 from .serializers import (
     UserSerializer, AddressSerializer, RegisterSerializer, JugTypeSerializer, JugSerializer,
-    RefillScheduleSerializer, OrderSerializer, OrderCreateSerializer, OrderStatusUpdateSerializer,
-    PaymentSerializer, NotificationSerializer, JugReportSerializer, AdminAuditLogSerializer,
-    ProfileChangeLogSerializer, 
+    RefillScheduleSerializer, OrderSerializer, OrderCreateSerializer, OrderStatusUpdateSerializer, 
+    NotificationSerializer, AdminAuditLogSerializer, ProfileChangeLogSerializer, 
 )
 # pyrefly: ignore [missing-import]
 from .permissions import IsRole, IsOwnerOrAdmin
@@ -346,7 +351,7 @@ class RefillScheduleDetailView(generics.RetrieveUpdateAPIView):
         return super().get_object()
 
 
-# ═══════════════ ORDER & PAYMENT VIEWS ═══════════════
+# ═══════════════ ORDER VIEWS ═══════════════
 
 class OrderListCreateView(generics.ListCreateAPIView):
     serializer_class = OrderSerializer
@@ -420,13 +425,6 @@ class OrderListCreateView(generics.ListCreateAPIView):
             changed_by=request.user,
         )
 
-        Payment.objects.create(
-            order=order,
-            amount=total,
-            payment_method='COD',
-            payment_status=Payment.PaymentStatus.PENDING,
-        )
-
         serializer = OrderSerializer(order)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -450,29 +448,35 @@ class OrderStatusUpdateView(generics.UpdateAPIView):
         if new_status == Order.Status.DELIVERED:
             instance.actual_arrival = timezone.now()
             instance.completed_at = timezone.now()
-            instance.save()   # save first so items can be accessed
+            instance.save()
 
             for item in instance.items.filter(
                 item_type=OrderItem.ItemType.NEW_JUG,
                 generated_jug__isnull=True
             ):
                 jug = Jug.objects.create(
+                    unique_id=f"JUG-{uuid.uuid4().hex[:8].upper()}",   # ← THIS LINE MUST BE PRESENT
                     owner=instance.customer,
                     jug_type=item.jug_type,
                     status=Jug.Status.ACTIVE,
-                    last_delivered_at=timezone.now()   # <-- add this
+                    last_delivered_at=timezone.now()
                 )
                 item.generated_jug = jug
                 item.save(update_fields=['generated_jug'])
+                RefillSchedule.objects.create(
+                    jug=jug,
+                    frequency_days=14,          # a sensible default
+                    next_reminder_at=None,      # paused → no reminder date
+                    status=RefillSchedule.Status.PAUSED,
+                )
 
-            # Update last_delivered_at for all refill jugs
+            # Update refill jugs
             for item in instance.items.filter(
                 item_type=OrderItem.ItemType.REFILL,
                 jug__isnull=False
             ):
                 item.jug.last_delivered_at = timezone.now()
                 item.jug.save(update_fields=['last_delivered_at'])
-
         else:
             instance.save()   # for other status changes
 
@@ -499,26 +503,7 @@ class OrderETAUpdateView(generics.UpdateAPIView):
         instance.estimated_arrival = serializer.validated_data['estimated_arrival']
         instance.save()
 
-
-class PaymentListCreateView(generics.ListCreateAPIView):
-    serializer_class = PaymentSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-        if user.is_admin_user:
-            return Payment.objects.all()
-        return Payment.objects.filter(order__customer=user)
-
-
-class PaymentDetailView(generics.RetrieveUpdateAPIView):
-    serializer_class = PaymentSerializer
-    required_role = 'Admin'
-    permission_classes = [IsRole]
-    queryset = Payment.objects.all()
-
-
-# ═══════════════ NOTIFICATION & REPORTS VIEWS ═══════════════
+# ═══════════════ NOTIFICATION ═══════════════
 
 class NotificationListView(generics.ListAPIView):
     serializer_class = NotificationSerializer
@@ -531,19 +516,44 @@ class NotificationListView(generics.ListAPIView):
         self.get_queryset().update(is_read=True)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-
-class JugReportListCreateView(generics.ListCreateAPIView):
-    serializer_class = JugReportSerializer
+class CustomerConsumptionView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        if self.request.user.is_admin_user:
-            return JugReport.objects.all()
-        return JugReport.objects.filter(reported_by=self.request.user)
+    def get(self, request):
+        now = timezone.now()
+        months = []
+        for i in range(5, -1, -1):
+            first_of_month = (now.replace(day=1) - timedelta(days=i*30)).replace(day=1)
+            month_name = first_of_month.strftime('%b')
+            months.append({
+                'month': month_name,
+                'year': first_of_month.year,
+                'month_start': first_of_month,
+                'count': 0,
+            })
 
-    def perform_create(self, serializer):
-        serializer.save(reported_by=self.request.user)
+        refill_counts = (
+            Order.objects.filter(
+                customer=request.user,
+                status=Order.Status.DELIVERED,
+                items__item_type=OrderItem.ItemType.REFILL,
+                completed_at__isnull=False,
+            )
+            .annotate(month=TruncMonth('completed_at'))
+            .values('month')
+            .annotate(count=Count('id'))
+            .order_by('month')
+        )
 
+        for item in refill_counts:
+            if item['month']:
+                for m in months:
+                    if (item['month'].year == m['year'] and
+                        item['month'].month == m['month_start'].month):
+                        m['count'] = item['count']
+                        break
+
+        return Response([{'month': m['month'], 'count': m['count']} for m in months])
 
 class AdminAuditLogListView(generics.ListAPIView):
     serializer_class = AdminAuditLogSerializer
@@ -554,6 +564,47 @@ class AdminAuditLogListView(generics.ListAPIView):
     search_fields = ['action', 'resource_id', 'admin_user__email']
     filterset_fields = ['action', 'resource_type']
 
+class OrderReportDownloadView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsRole]
+    required_role = 'Admin'
+
+    def get(self, request):
+        period = request.query_params.get('period', 'month')  # 'week' or 'month'
+
+        now = timezone.now()
+        if period == 'week':
+            start_date = now - timedelta(days=now.weekday())  # Monday
+            end_date = now
+            file_prefix = 'weekly'
+        else:
+            start_date = now.replace(day=1)
+            end_date = now
+            file_prefix = 'monthly'
+
+        orders = Order.objects.filter(
+            status=Order.Status.DELIVERED,
+            completed_at__gte=start_date,
+            completed_at__lte=end_date
+        ).select_related('customer')
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{file_prefix}_report_{now.strftime("%Y-%m-%d")}.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow(['Order ID', 'Customer', 'Amount', 'Date Delivered'])
+        total = 0
+        for order in orders:
+            writer.writerow([
+                order.id,
+                order.customer.email,
+                order.price_snapshot,
+                order.completed_at.strftime('%Y-%m-%d %H:%M') if order.completed_at else ''
+            ])
+            total += order.price_snapshot
+
+        writer.writerow([])
+        writer.writerow(['Total Earnings', '', total, ''])
+        return response
 
 # ═══════════════ LOCKOUT HELPERS ═══════════════
 LOCKOUT_THRESHOLDS = {

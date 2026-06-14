@@ -4,29 +4,26 @@ import Modal from "./Modal";
 
 export default function EditJugTypeModal({ isOpen, onClose, onSave, jugType, dark, theme }) {
   const [form, setForm] = useState({
-    typeName: "",
-    capacity: "",
-    purchasePrice: "",
-    refillPrice: "",
-    description: "",
-    image: null,
-    isAvailable: true,
+    typeName: "", capacity: "", purchasePrice: "",
+    refillPrice: "", description: "", image: null, isAvailable: true,
   });
+  const [existingImage, setExistingImage] = useState(null);
 
   useEffect(() => {
     if (jugType && isOpen) {
       // Support both API snake_case (from backend) and camelCase (legacy mock shape)
       const rawPurchase = jugType.purchase_price ?? jugType.purchasePrice ?? '';
-      const rawRefill   = jugType.refill_price   ?? jugType.refillPrice   ?? '';
+      const rawRefill = jugType.refill_price ?? jugType.refillPrice ?? '';
       setForm({
-        typeName:      jugType.type_name      ?? jugType.typeName      ?? '',
-        capacity:      jugType.gallon_capacity ?? jugType.capacity      ?? '',
+        typeName: jugType.type_name ?? jugType.typeName ?? '',
+        capacity: jugType.gallon_capacity ?? jugType.capacity ?? '',
         purchasePrice: String(rawPurchase).replace('₱', ''),
-        refillPrice:   String(rawRefill).replace('₱', ''),
-        description:   jugType.description ?? '',
+        refillPrice: String(rawRefill).replace('₱', ''),
+        description: jugType.description ?? '',
         image: null,
-        isAvailable:   jugType.is_available ?? jugType.isAvailable ?? true,
+        isAvailable: jugType.is_available ?? jugType.isAvailable ?? true,
       });
+      setExistingImage(jugType.image ?? null);
     }
   }, [jugType, isOpen]);
 
@@ -49,10 +46,9 @@ export default function EditJugTypeModal({ isOpen, onClose, onSave, jugType, dar
       onSave({
         ...jugType,
         ...form,
-        purchasePrice: `₱${form.purchasePrice}`,
-        refillPrice: `₱${form.refillPrice}`,
+        purchasePrice: form.purchasePrice,
+        refillPrice: form.refillPrice,
       });
-      onClose();
     }
   };
 
@@ -142,18 +138,32 @@ export default function EditJugTypeModal({ isOpen, onClose, onSave, jugType, dar
           />
         </div>
 
-        {/* Image Upload */}
+        {/* Image Upload with Preview */}
         <div>
           <label className={labelClass}>Image</label>
-          <input
-            type="file"
-            name="image"
-            onChange={handleChange}
-            className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium outline-none transition-colors ${inp}`}
-          />
-          {form.image && (
-            <p className={`text-xs mt-1 ${muted}`}>Selected: {form.image.name}</p>
-          )}
+          <div className="flex items-center gap-4 mb-3">
+            <div className="w-16 h-16 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden flex items-center justify-center bg-slate-50 dark:bg-slate-800 flex-shrink-0">
+              {form.image ? (
+                <img src={URL.createObjectURL(form.image)} alt="Preview" className="w-full h-full object-cover" />
+              ) : existingImage ? (
+                <img src={existingImage.startsWith('http') ? existingImage : `http://localhost:8000${existingImage}`} alt="Current" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-xs text-slate-400">No Image</span>
+              )}
+            </div>
+            <div className="flex-1">
+              <input
+                type="file"
+                name="image"
+                accept="image/*"
+                onChange={handleChange}
+                className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium outline-none transition-colors ${inp}`}
+              />
+              {form.image && (
+                <p className={`text-xs mt-1 ${muted}`}>Selected: {form.image.name}</p>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Availability Toggle */}
@@ -162,14 +172,12 @@ export default function EditJugTypeModal({ isOpen, onClose, onSave, jugType, dar
           <button
             type="button"
             onClick={() => setForm((prev) => ({ ...prev, isAvailable: !prev.isAvailable }))}
-            className={`relative w-11 h-6 rounded-full transition-colors ${
-              form.isAvailable ? "bg-blue-600" : D ? "bg-slate-700" : "bg-slate-300"
-            }`}
+            className={`relative w-11 h-6 rounded-full transition-colors ${form.isAvailable ? "bg-blue-600" : D ? "bg-slate-700" : "bg-slate-300"
+              }`}
           >
             <span
-              className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                form.isAvailable ? "left-4.9" : "left-0.5"
-              }`}
+              className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transform transition-transform ${form.isAvailable ? "left-4.9" : "left-0.5"
+                }`}
             />
           </button>
         </div>
@@ -179,11 +187,10 @@ export default function EditJugTypeModal({ isOpen, onClose, onSave, jugType, dar
           <button
             type="button"
             onClick={onClose}
-            className={`flex-1 py-2.5 rounded-xl border font-semibold text-sm transition-colors ${
-              D
-                ? "border-slate-700 text-slate-300 hover:bg-slate-800"
-                : "border-slate-300 text-slate-600 hover:bg-slate-50"
-            }`}
+            className={`flex-1 py-2.5 rounded-xl border font-semibold text-sm transition-colors ${D
+              ? "border-slate-700 text-slate-300 hover:bg-slate-800"
+              : "border-slate-300 text-slate-600 hover:bg-slate-50"
+              }`}
           >
             Cancel
           </button>
@@ -191,13 +198,12 @@ export default function EditJugTypeModal({ isOpen, onClose, onSave, jugType, dar
             type="button"
             onClick={handleSubmit}
             disabled={!isComplete}
-            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors ${
-              isComplete
-                ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md"
-                : D
+            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors ${isComplete
+              ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+              : D
                 ? "bg-slate-800 text-slate-600 cursor-not-allowed"
                 : "bg-slate-200 text-slate-400 cursor-not-allowed"
-            }`}
+              }`}
           >
             Save Changes
           </button>

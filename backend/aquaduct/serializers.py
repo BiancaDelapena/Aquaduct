@@ -6,7 +6,7 @@ from django.utils import timezone
 from .models import (
     User, Address, ProfileChangeLog,
     JugType, Jug, RefillSchedule, Order, OrderItem,
-    OrderStatusHistory, Payment, Notification, JugReport, AdminAuditLog
+    OrderStatusHistory, Notification, AdminAuditLog
 )
 
 # ══════════════════ EXISTING SERIALIZERS ══════════════════
@@ -150,13 +150,14 @@ class JugTypeSerializer(serializers.ModelSerializer):
 # ── Jug ─────────────────────────────────────────────────────
 class JugSerializer(serializers.ModelSerializer):
     jug_type_name = serializers.CharField(source='jug_type.type_name', read_only=True)
+    jug_type_image = serializers.ImageField(source='jug_type.image', read_only=True)
     owner_email = serializers.CharField(source='owner.email', read_only=True)
 
     class Meta:
         model = Jug
         fields = [
             'id', 'unique_id', 'owner', 'owner_email',
-            'jug_type', 'jug_type_name', 'jug_label',
+            'jug_type', 'jug_type_name', 'jug_type_image', 'jug_label',
             'status', 'last_delivered_at', 'reminder_active', 'refill_schedule',
             'created_at', 'updated_at',
         ]
@@ -193,10 +194,16 @@ class RefillScheduleSerializer(serializers.ModelSerializer):
 
 # ── Order & OrderItem ───────────────────────────────────────
 class OrderItemSerializer(serializers.ModelSerializer):
+    jug_type_name = serializers.CharField(source='jug_type.type_name', read_only=True, allow_null=True)
+    jug_label = serializers.CharField(source='jug.jug_label', read_only=True, allow_null=True)
+
     class Meta:
         model = OrderItem
-        fields = ['id', 'item_type', 'jug_type', 'jug', 'quantity', 'unit_price', 'generated_jug']
-        read_only_fields = ['id', 'generated_jug']
+        fields = [
+            'id', 'item_type', 'jug_type', 'jug', 'quantity', 'unit_price',
+            'generated_jug', 'jug_type_name', 'jug_label',
+        ]
+        read_only_fields = ['id', 'generated_jug', 'jug_type_name']
 
 class OrderStatusHistorySerializer(serializers.ModelSerializer):
     changed_by_email = serializers.CharField(source='changed_by.email', read_only=True)
@@ -288,34 +295,12 @@ class OrderStatusUpdateSerializer(serializers.ModelSerializer):
         model = Order
         fields = ['status']
 
-# ── Payment ─────────────────────────────────────────────────
-class PaymentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Payment
-        fields = ['id', 'order', 'amount', 'payment_method', 'payment_status',
-                  'reference_number', 'paid_at', 'created_at']
-        read_only_fields = ['id', 'order', 'amount', 'created_at']
-
 # ── Notification ────────────────────────────────────────────
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = ['id', 'title', 'message', 'notification_type', 'order', 'is_read', 'sent_at']
         read_only_fields = ['id', 'sent_at']
-
-# ── JugReport ───────────────────────────────────────────────
-class JugReportSerializer(serializers.ModelSerializer):
-    reported_by_email = serializers.CharField(source='reported_by.email', read_only=True)
-
-    class Meta:
-        model = JugReport
-        fields = ['id', 'jug', 'reported_by', 'reported_by_email', 'report_type',
-                  'description', 'status', 'resolved_by', 'resolved_at', 'created_at']
-        read_only_fields = ['id', 'reported_by', 'status', 'resolved_by', 'resolved_at', 'created_at']
-
-    def create(self, validated_data):
-        validated_data['reported_by'] = self.context['request'].user
-        return super().create(validated_data)
 
 # ── AdminAuditLog ───────────────────────────────────────────
 class AdminAuditLogSerializer(serializers.ModelSerializer):

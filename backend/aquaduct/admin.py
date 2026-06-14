@@ -4,8 +4,7 @@ from django.utils.html import format_html
 # pyrefly: ignore [missing-import]
 from .models import (
     User, Address, JugType, Jug, RefillSchedule,
-    Order, OrderItem, OrderStatusHistory, Payment,
-    Notification, JugReport, ProfileChangeLog,
+    Order, OrderItem, OrderStatusHistory, Notification, ProfileChangeLog,
 )
 
 @admin.register(User)
@@ -114,27 +113,11 @@ class OrderItemAdmin(admin.ModelAdmin):
     list_filter = ("item_type",)
     readonly_fields = ("created_at",)
 
-@admin.register(Payment)
-class PaymentAdmin(admin.ModelAdmin):
-    list_display = ("id", "order", "amount", "payment_status", "paid_at", "reference_number")
-    list_filter = ("payment_status", "paid_at")
-    search_fields = ("order__id", "reference_number")
-    readonly_fields = ("amount", "paid_at")
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ("id", "title", "notification_type", "user", "order", "is_read", "sent_at")
     list_filter = ("notification_type", "is_read")
     search_fields = ("title", "message", "user__email")
-
-@admin.register(JugReport)
-class JugReportAdmin(admin.ModelAdmin):
-    list_display = ("id", "jug", "reported_by", "report_type", "status", "resolved_by", "created_at")
-    list_filter = ("report_type", "status")
-    search_fields = ("description", "jug__unique_id", "reported_by__email")
 
 @admin.register(ProfileChangeLog)
 class ProfileChangeLogAdmin(admin.ModelAdmin):

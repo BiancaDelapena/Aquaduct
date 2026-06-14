@@ -135,7 +135,7 @@ class RefillSchedule(TimeStampedModel):
 
     jug = models.OneToOneField(Jug, on_delete=models.CASCADE, related_name="refill_schedule")
     frequency_days = models.PositiveIntegerField()
-    next_reminder_at = models.DateTimeField()   # calculated as last_delivered_at + frequency_days
+    next_reminder_at = models.DateTimeField(null=True, blank=True)   # calculated as last_delivered_at + frequency_days
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
 
     class Meta:
@@ -242,24 +242,6 @@ class OrderStatusHistory(models.Model):
     def __str__(self):
         return f"Order #{self.order_id} → {self.status} at {self.changed_at}"
 
-class Payment(models.Model):
-    class PaymentStatus(models.TextChoices):
-        PENDING = "Pending", "Pending"
-        PAID = "Paid", "Paid"
-        FAILED = "Failed", "Failed"
-        REFUNDED = "Refunded", "Refunded"
-
-    order = models.OneToOneField(Order, on_delete=models.PROTECT, related_name="payment")
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    payment_method = models.CharField(max_length=50)
-    payment_status = models.CharField(max_length=20, choices=PaymentStatus.choices, default=PaymentStatus.PENDING)
-    reference_number = models.CharField(max_length=100, blank=True)
-    paid_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"Payment for Order #{self.order_id} - {self.payment_status}"
-
 class Notification(models.Model):
     class NotificationType(models.TextChoices):
         REMINDER = "Reminder", "Reminder"
@@ -276,26 +258,6 @@ class Notification(models.Model):
 
     class Meta:
         ordering = ['-sent_at']
-
-class JugReport(TimeStampedModel):
-    class ReportType(models.TextChoices):
-        LOST = "Lost", "Lost"
-        BROKEN = "Broken", "Broken"
-        NOT_DELIVERED = "Not Delivered", "Not Delivered"
-        OTHER = "Other", "Other"
-
-    class ReportStatus(models.TextChoices):
-        OPEN = "Open", "Open"
-        RESOLVED = "Resolved", "Resolved"
-
-    jug = models.ForeignKey(Jug, on_delete=models.CASCADE, related_name="reports")
-    reported_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="jug_reports")
-    report_type = models.CharField(max_length=20, choices=ReportType.choices)
-    description = models.TextField()
-    status = models.CharField(max_length=20, choices=ReportStatus.choices, default=ReportStatus.OPEN)
-    resolved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="resolved_reports")
-    resolved_at = models.DateTimeField(null=True, blank=True)
-
 
 class ProfileChangeLog(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="profile_changes")
