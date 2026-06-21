@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import API from '../api';
 import Icon, { IC } from '../components/MyIcons';
+import logo from "../assets/logoaqud.png";
 
 import { StatCard } from '../components/Statcard';
 import { OrderStatusBadge } from '../components/Orderstatusbadge';
@@ -904,9 +905,11 @@ export function AdminDashboard() {
 
           {/* Logo */}
           <div className="flex items-center gap-3 flex-shrink-0">
-            <div className="bg-blue-600 p-2 rounded-lg">
-              <Droplets className="w-6 h-6 text-white" />
-            </div>
+            <img
+              src={logo}
+              alt="Aquaduct Logo"
+              className="w-10 h-10 object-contain"
+            />
             <div>
               <h1 className={`text-xl font-black ${text}`}>Aquaduct</h1>
               <p className={`text-sm ${muted}`}>Business Dashboard</p>

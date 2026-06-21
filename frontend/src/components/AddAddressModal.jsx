@@ -94,7 +94,7 @@ const AddAddressModal = ({ show, onClose, onContinue, dark, theme, initialData =
             <Field label="Unit Number" value={unitNumber} onChange={setUnitNumber}
               placeholder="e.g., 4B, 12A" required muted={muted} inp={inp} />
             <Field label="Building Name" value={buildingName} onChange={setBuildingName}
-              placeholder="e.g., The Residences (optional)" muted={muted} inp={inp} />
+              placeholder="e.g., The Residences" required muted={muted} inp={inp} />
           </div>
         )}
 
