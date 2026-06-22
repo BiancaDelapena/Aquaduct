@@ -8,6 +8,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import generics, permissions, status, filters, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -34,7 +35,6 @@ from .serializers import (
 )
 # pyrefly: ignore [missing-import]
 from .permissions import IsRole, IsOwnerOrAdmin
-
 
 # ═══════════════ AUTHENTICATION VIEWS ═══════════════
 # @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
@@ -302,7 +302,32 @@ class JugListCreateView(generics.ListCreateAPIView):
             if owner_id:
                 return Jug.objects.filter(owner_id=owner_id)
             return Jug.objects.all()
-        return Jug.objects.filter(owner=user)
+
+        qs = Jug.objects.filter(owner=user)
+        self._process_overdue_schedules(user)
+        return qs
+
+    def _process_overdue_schedules(self, user):
+        """
+        For each active schedule of the user that has a past due date,
+        create a reminder notification and advance the date by frequency_days.
+        """
+        now = timezone.now()
+        overdue_schedules = RefillSchedule.objects.filter(
+            jug__owner=user,
+            status=RefillSchedule.Status.ACTIVE,
+            next_reminder_at__lte=now,
+        ).select_related('jug')
+
+        for schedule in overdue_schedules:
+            Notification.objects.create(
+                user=user,
+                title='Refill Reminder',
+                message=f'Your jug {schedule.jug.unique_id} is due for a refill.',
+                notification_type=Notification.NotificationType.REMINDER,
+            )
+            schedule.next_reminder_at = now + timedelta(days=schedule.frequency_days)
+            schedule.save(update_fields=['next_reminder_at'])
 
     def perform_create(self, serializer):
         if self.request.user.is_admin_user:
@@ -555,6 +580,11 @@ class CustomerConsumptionView(APIView):
 
         return Response([{'month': m['month'], 'count': m['count']} for m in months])
 
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 class AdminAuditLogListView(generics.ListAPIView):
     serializer_class = AdminAuditLogSerializer
     required_role = 'Admin'
@@ -563,6 +593,7 @@ class AdminAuditLogListView(generics.ListAPIView):
     filter_backends = [filters.SearchFilter, DjangoFilterBackend]
     search_fields = ['action', 'resource_id', 'admin_user__email']
     filterset_fields = ['action', 'resource_type']
+    pagination_class = StandardResultsSetPagination
 
 class OrderReportDownloadView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsRole]

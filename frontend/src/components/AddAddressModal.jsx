@@ -82,7 +82,7 @@ const AddAddressModal = ({ show, onClose, onContinue, dark, theme, initialData =
                     : 'border-slate-200 text-slate-600 hover:border-blue-300'
                   }`}
               >
-                {type === 'House' ? '🏠 House' : '🏢 Apartment'}
+                {type === 'House' ? 'House' : 'Apartment'}
               </button>
             ))}
           </div>

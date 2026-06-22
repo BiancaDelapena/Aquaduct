@@ -37,10 +37,6 @@ const EyeIcon = ({ open }) =>
 
 const features = [
   {
-    title: "Smart Jug Tracking",
-    desc: "Monitor all your water jugs with QR code technology",
-  },
-  {
     title: "Automated Reminders",
     desc: "Never run out of water with scheduled refills",
   },

@@ -1,7 +1,6 @@
 // components/DeliveryCard.jsx
-import { MapPin, Phone, Package, Navigation, CheckCircle } from 'lucide-react';
+import { MapPin, Phone, Package, CheckCircle } from 'lucide-react';
 
-// Must match backend Order.Status choices exactly
 const DELIVERY_STATUSES = [
   { label: 'Order Placed', value: 'Ordered' },
   { label: 'To Be Picked Up', value: 'To Be Picked Up' },
@@ -18,11 +17,12 @@ export function DeliveryCard({ order, onStatusUpdate, onComplete, dark }) {
   const muted = D ? 'text-slate-400' : 'text-slate-500';
   const stepperBg = D ? 'bg-slate-800' : 'bg-slate-50';
 
-  const itemSummary = order.items?.map(i =>
-    i.item_type === 'Refill'
-      ? `Refill (${i.jug?.unique_id ?? '—'})`
-      : `New Jug — ${i.jug_type?.type_name ?? '—'}`
-  ).join(', ') || '—';
+  const itemSummary = order.items?.map(i => {
+    if (i.item_type === 'Refill') {
+      return `Refill (${i.jug_label || i.jug?.unique_id || '—'})`;
+    }
+    return `New Jug — ${i.generated_jug_label || i.jug_type?.type_name || '—'}`;
+  }).join(', ') || '—';
 
   return (
     <div className={`p-6 rounded-xl border shadow-sm ${cardBg}`}>
@@ -37,11 +37,19 @@ export function DeliveryCard({ order, onStatusUpdate, onComplete, dark }) {
               {order.items?.[0]?.item_type ?? 'Order'}
             </span>
           </div>
-          <div className={`text-sm ${muted}`}>
-            ETA:{' '}
-            {order.estimated_arrival
-              ? new Date(order.estimated_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              : '—'}
+          <div className="space-y-0.5">
+            <div className={`text-sm ${muted}`}>
+              ETA:{' '}
+              {order.estimated_arrival
+                ? new Date(order.estimated_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : '—'}
+            </div>
+            <div className={`text-sm ${muted}`}>
+              Placed:{' '}
+              {order.created_at
+                ? new Date(order.created_at).toLocaleString()
+                : '—'}
+            </div>
           </div>
         </div>
         <div className="text-2xl font-black text-blue-600">
@@ -63,7 +71,12 @@ export function DeliveryCard({ order, onStatusUpdate, onComplete, dark }) {
         {order.customer_phone && (
           <div className="flex items-center gap-3">
             <Phone className={`w-5 h-5 ${muted}`} />
-            <div className={`text-sm ${muted}`}>{order.customer_phone}</div>
+            <a
+              href={`tel:${order.customer_phone}`}
+              className={`text-sm font-medium text-blue-600 hover:underline`}
+            >
+              {order.customer_phone}
+            </a>
           </div>
         )}
         <div className="flex items-center gap-3">
@@ -80,12 +93,13 @@ export function DeliveryCard({ order, onStatusUpdate, onComplete, dark }) {
             <button
               key={s.value}
               onClick={() => onStatusUpdate(order.id, s.value)}
-              className={`text-xs px-3 py-1 rounded-full border transition-colors ${order.status === s.value
+              className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                order.status === s.value
                   ? 'bg-blue-600 text-white border-blue-600'
                   : D
                     ? 'bg-slate-700 text-slate-300 border-slate-600 hover:border-blue-400 hover:text-blue-400'
                     : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-600'
-                }`}
+              }`}
             >
               {s.label}
             </button>
@@ -93,30 +107,18 @@ export function DeliveryCard({ order, onStatusUpdate, onComplete, dark }) {
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-2">
-        <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm">
-          <Navigation className="w-4 h-4" />
-          Navigate
-        </button>
-        {order.customer_phone && (
-          <a
-            href={`tel:${order.customer_phone}`}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors text-sm"
+      {/* Actions – only the "Mark as Delivered" button remains */}
+      {onComplete && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => onComplete(order.id)}
+            title="Mark as Delivered"
+            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
           >
-            <Phone className="w-4 h-4" />
-            Call
-          </a>
-        )}
-        {onComplete && (<button
-          onClick={() => onComplete(order.id)}
-          title="Mark as Delivered"
-          className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-        >
-          <CheckCircle className="w-5 h-5" />
-        </button>
-        )}
-      </div>
+            <CheckCircle className="w-5 h-5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

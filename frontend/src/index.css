@@ -1,1 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Gugi&display=swap');
 @import "tailwindcss";
+
+@theme {
+  --font-gugi: 'Gugi', sans-serif;
+}
+
+@keyframes wave-move {
+  0% { transform: translateX(0) translateY(100%); }
+  100% { transform: translateX(-50%) translateY(0%); }
+}
+
+@keyframes wave-move-slow {
+  0% { transform: translateX(-50%) translateY(100%); }
+  100% { transform: translateX(0%) translateY(0%); }
+}
+
+.water-wave {
+  transform: translateY(100%);
+  transition: transform 2.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.group:hover .water-wave {
+  transform: translateY(0%);
+}
+
+.wave-svg {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  width: 200%;
+  animation: none;
+}
+
+.group:hover .wave-layer-1 {
+  animation: wave-move 5s linear infinite;
+}
+
+.group:hover .wave-layer-2 {
+  animation: wave-move-slow 7s linear infinite;
+}

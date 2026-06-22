@@ -4,20 +4,12 @@ import { AlertCircle } from "lucide-react";
 import Icon, { IC } from "./MyIcons";
 
 export default function ConfirmDialog({
-  isOpen,
-  show,
-  onClose,
-  onConfirm,
-  onBack,
+  isOpen, show, onClose, onConfirm, onBack,
   title = "Confirm Action",
-  message,
-  bannerMessage,   // JSX or string — renders as a blue info banner
-  previewData,
-  confirmText = "Confirm",
-  cancelText,
+  message, bannerMessage, previewData,
+  confirmText = "Confirm", cancelText,
   isDangerous = false,
-  dark = false,
-  theme,
+  dark = false, theme,
 }) {
   const isVisible = isOpen ?? show ?? false;
   const D = dark;
@@ -35,7 +27,6 @@ export default function ConfirmDialog({
         {bannerMessage && (
           <div className={`flex gap-3 p-4 rounded-xl border ${D ? "bg-blue-900/20 border-blue-800/60" : "bg-blue-50 border-blue-100"
             }`}>
-            <Icon path={IC.refresh} className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
             <p className={`text-sm leading-relaxed ${D ? "text-blue-300" : "text-blue-800"}`}>
               {bannerMessage}
             </p>

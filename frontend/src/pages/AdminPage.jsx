@@ -38,6 +38,12 @@ export function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // ── Audit log pagination state ─────────────────────────────────────────
+  const [auditLogPage, setAuditLogPage] = useState(1);
+  const [auditLogTotal, setAuditLogTotal] = useState(0);
+  const [auditLogNext, setAuditLogNext] = useState(null);
+  const [auditLogPrev, setAuditLogPrev] = useState(null);
+
   // ── Real data state ─────────────────────────────────────────────────────────
   const [orders, setOrders] = useState([]);
   const [jugTypes, setJugTypes] = useState([]);
@@ -81,21 +87,20 @@ export function AdminDashboard() {
   ];
 
   // ── Data loading ─────────────────────────────────────────────────────────────
+  // Load all non-audit data (called on mount and after important actions)
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [profileRes, ordersRes, jugTypesRes, jugsRes, auditRes] = await Promise.all([
+      const [profileRes, ordersRes, jugTypesRes, jugsRes] = await Promise.all([
         API.get('profile/'),
         API.get('orders/'),
         API.get('jug-types/'),
         API.get('jugs/'),
-        API.get('admin/audit-logs/'),
       ]);
-      setProfile(jugTypesRes && profileRes.data);
+      setProfile(profileRes.data);
       setOrders(ordersRes.data);
       setJugTypes(jugTypesRes.data);
       setJugs(jugsRes.data);
-      setAuditLogs(auditRes.data);
     } catch (err) {
       console.error('Failed to load admin data:', err);
       showError('Failed to load data. Please refresh.');
@@ -104,7 +109,35 @@ export function AdminDashboard() {
     }
   }, []);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  // Load audit logs separately, with pagination support
+  const loadAuditLogs = useCallback(async (page = 1) => {
+    try {
+      const res = await API.get(`admin/audit-logs/?page=${page}`);
+      setAuditLogs(res.data.results);
+      setAuditLogTotal(res.data.count);
+      setAuditLogNext(res.data.next);
+      setAuditLogPrev(res.data.previous);
+    } catch (err) {
+      console.error('Failed to load audit logs:', err);
+    }
+  }, []);
+
+  // On mount, load everything
+  useEffect(() => {
+    loadAll();
+    loadAuditLogs(1);
+  }, [loadAll, loadAuditLogs]);
+
+  // Reload audit logs when page changes
+  useEffect(() => {
+    loadAuditLogs(auditLogPage);
+  }, [auditLogPage, loadAuditLogs]);
+
+  // Reset to page 1 when search term changes
+  useEffect(() => {
+    if (auditLogPage !== 1) setAuditLogPage(1);
+    // Otherwise just reload will happen because loadAuditLogs depends on auditLogPage
+  }, [auditSearchTerm]);
 
   // ── Theme tokens ─────────────────────────────────────────────────────────────
   const D = dark;
@@ -147,9 +180,7 @@ export function AdminDashboard() {
       await API.patch(`orders/${orderId}/status/`, { status: newStatus });
       setOrders(prev => prev.map(o =>
         o.id === orderId ? { ...o, status: newStatus } : o));
-      await loadAll();
 
-      // On delivery, flush jug names to the backend
       if (newStatus === 'Delivered') {
         const names = jugNames[orderId] ?? {};
         if (Object.keys(names).length > 0) {
@@ -167,6 +198,8 @@ export function AdminDashboard() {
           setNamingOrder(null);
         }
       }
+
+      await loadAll();   // Refresh everything after status change
     } catch (err) {
       console.error('Failed to update order status:', err.response?.data || err);
       showError('Failed to update order status. Please try again.');
@@ -306,19 +339,6 @@ export function AdminDashboard() {
 
   const renderDashboard = () => (
     <div className="space-y-6">
-      {/* Stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {jugStatusData.map(s => (
-          <div key={s.name} className={`p-6 rounded-xl border shadow-sm ${card}`}>
-            <div className="flex items-center justify-between mb-2">
-              <span className={`text-sm ${muted}`}>{s.name} Jugs</span>
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }} />
-            </div>
-            <div className={`text-3xl font-black ${text}`}>{s.value}</div>
-          </div>
-        ))}
-      </div>
-
       {/* Active Deliveries Summary */}
       <div className={`p-6 rounded-xl border shadow-sm ${card}`}>
         <div className="flex items-center justify-between mb-4">
@@ -351,7 +371,7 @@ export function AdminDashboard() {
           Manage Deliveries →
         </button>
       </div>
-
+      
       {/* Recent Orders Summary */}
       <div className={`p-6 rounded-xl border shadow-sm ${card}`}>
         <h3 className={`text-lg font-bold mb-4 ${text}`}>Recent Orders</h3>
@@ -376,6 +396,21 @@ export function AdminDashboard() {
           View All Orders →
         </button>
       </div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {jugStatusData.map(s => (
+          <div key={s.name} className={`p-6 rounded-xl border shadow-sm ${card}`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-sm ${muted}`}>{s.name} Jugs</span>
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }} />
+            </div>
+            <div className={`text-3xl font-black ${text}`}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      
     </div>
   );
 
@@ -405,7 +440,6 @@ export function AdminDashboard() {
           const allNamed = newJugItems.every((_, idx) => (names[idx] ?? '').trim() !== '');
           const canConfirm = allNamed;
           const isNaming = namingOrder === order.id;
-
 
           return (
             <div key={order.id}>
@@ -567,33 +601,6 @@ export function AdminDashboard() {
 
     return (
       <div className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <StatCard
-            label="Completed"
-            value={historyOrders.length}
-            subtext={`₱${totalRevenue.toFixed(2)} collected`}
-            subtextColor="text-green-600"
-            icon={CheckCircle}
-            iconColor="text-green-600"
-            dark={dark}
-          />
-          <StatCard
-            label="Total Orders"
-            value={orders.length}
-            subtext={`${activeOrders.length} still active`}
-            subtextColor="text-blue-600"
-            icon={History}
-            iconColor="text-blue-600"
-            dark={dark}
-          />
-          <StatCard
-            label="Completion Rate"
-            value={orders.length > 0 ? `${Math.round((historyOrders.length / orders.length) * 100)}%` : '—'}
-            icon={CheckCircle}
-            iconColor="text-purple-600"
-            dark={dark}
-          />
-        </div>
 
         <div className="flex items-center gap-4 mt-2">
           <span className={`text-sm font-semibold ${muted}`}>Download Earnings Report:</span>
@@ -644,6 +651,27 @@ export function AdminDashboard() {
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatCard
+            label="Completed"
+            value={historyOrders.length}
+            subtext={`₱${totalRevenue.toFixed(2)} collected`}
+            subtextColor="text-green-600"
+            icon={CheckCircle}
+            iconColor="text-green-600"
+            dark={dark}
+          />
+          <StatCard
+            label="Total Orders"
+            value={orders.length}
+            subtext={`${activeOrders.length} still active`}
+            subtextColor="text-blue-600"
+            icon={History}
+            iconColor="text-blue-600"
+            dark={dark}
+          />
         </div>
       </div>
     );
@@ -779,6 +807,7 @@ export function AdminDashboard() {
     </div>
   );
 
+  // ── Audit Logs with pagination ─────────────────────────────────────────────
   const renderAuditLogs = () => {
     const actionColors = {
       'Order Status Changed': 'bg-blue-100 text-blue-700',
@@ -798,12 +827,15 @@ export function AdminDashboard() {
       'Auth': 'bg-slate-50 text-slate-600',
     };
 
+    // Client-side filter on the current page's data
     const filtered = auditLogs.filter(log =>
       !auditSearchTerm ||
       String(log.resource_id || '').toLowerCase().includes(auditSearchTerm.toLowerCase()) ||
       (log.admin_email || '').toLowerCase().includes(auditSearchTerm.toLowerCase()) ||
       (log.action_display || log.action || '').toLowerCase().includes(auditSearchTerm.toLowerCase())
     );
+
+    const totalPages = Math.ceil(auditLogTotal / 20);
 
     return (
       <div className="space-y-4">
@@ -821,7 +853,7 @@ export function AdminDashboard() {
             </div>
             <div className={`flex items-center gap-2 text-sm ${muted}`}>
               <FileText className="w-4 h-4" />
-              {filtered.length} {filtered.length === 1 ? 'entry' : 'entries'}
+              {auditLogTotal} total entries
             </div>
           </div>
         </div>
@@ -852,8 +884,7 @@ export function AdminDashboard() {
                     <td className={`py-3 px-4 text-sm ${text}`}>{log.admin_email || '—'}</td>
                     <td className="py-3 px-4">
                       <span className={`text-xs px-2 py-1 rounded-full font-semibold ${actionColors[log.action_display || log.action] ?? 'bg-slate-100 text-slate-600'}`}>
-                        {log.action_display || log.action}
-                      </span>
+                        {log.action_display || log.action} </span>
                     </td>
                     <td className="py-3 px-4">
                       <span className={`text-xs px-2 py-1 rounded-full font-semibold ${resourceTypeColors[log.resource_type] ?? 'bg-slate-100 text-slate-600'}`}>
@@ -874,6 +905,39 @@ export function AdminDashboard() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination controls */}
+          {totalPages > 1 && (
+            <div className={`flex items-center justify-between px-4 py-3 border-t ${border}`}>
+              <span className={`text-sm ${muted}`}>
+                Page {auditLogPage} of {totalPages}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  disabled={!auditLogPrev}
+                  onClick={() => setAuditLogPage(p => p - 1)}
+                  className={`px-3 py-1 rounded-lg text-sm font-semibold transition-colors ${
+                    !auditLogPrev
+                      ? 'opacity-50 cursor-not-allowed bg-slate-200 dark:bg-slate-800'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  Previous
+                </button>
+                <button
+                  disabled={!auditLogNext}
+                  onClick={() => setAuditLogPage(p => p + 1)}
+                  className={`px-3 py-1 rounded-lg text-sm font-semibold transition-colors ${
+                    !auditLogNext
+                      ? 'opacity-50 cursor-not-allowed bg-slate-200 dark:bg-slate-800'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -911,8 +975,9 @@ export function AdminDashboard() {
               className="w-10 h-10 object-contain"
             />
             <div>
-              <h1 className={`text-xl font-black ${text}`}>Aquaduct</h1>
-              <p className={`text-sm ${muted}`}>Business Dashboard</p>
+              <span className="font-gugi text-2xl bg-gradient-to-t from-blue-700 to-cyan-300 
+              bg-clip-text text-transparent">Aquaduct</span>
+              <p className="text-sm bg-gradient-to-l from-slate-400 to-blue-400 bg-clip-text text-transparent">Admin Dashboard</p>
             </div>
           </div>
 

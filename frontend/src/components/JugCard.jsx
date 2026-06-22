@@ -5,12 +5,11 @@ import StatusBadge from './StatusBadge';
 
 /**
  * Props:
- *  jug              — jug object { id, type, status, lastRefill, nextRefill, frequency }
+ *  jug              — jug object { id, label, type, status, lastRefill, nextRefill, frequency }
  *  dark             — boolean (dark mode flag)
- *  theme            — { text, muted, hov, D } tokens from CustomerPage
+ *  theme            — { text, muted, hov, inp, border, D } tokens from CustomerPage
  *  onToggleStatus   — (jugId) => void  (called after confirm)
- *  onUpdateFreq     — (jugId, days, enabled) => void
- *  onRequestConfirm — (config) => void  — opens ConfirmDialog from parent
+ *  onUpdateFreq     — (jug, days, enabled) => void  (called on save)
  */
 const JugCard = ({ jug, dark, theme, onToggleStatus, onUpdateFreq }) => {
     const { text, muted, hov, D, inp, border } = theme;
@@ -19,25 +18,26 @@ const JugCard = ({ jug, dark, theme, onToggleStatus, onUpdateFreq }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef(null);
 
-    // ── Frequency inline editor ───────────────────────────────────────────
+    // ── Frequency popover controls ────────────────────────────────────────
     const [freqOpen, setFreqOpen] = useState(false);
-    const [freqDays, setFreqDays] = useState(() => {
-        // parse "14 days" → 14, or fall back to ''
-        const match = jug.frequency?.match(/^(\d+)/);
-        return match ? match[1] : '';
-    });
-    const [freqEnabled, setFreqEnabled] = useState(
-        // treat '-' or missing as disabled
-        jug.frequency && jug.frequency !== '-'
-    );
     const freqRef = useRef(null);
 
-    // Sync when jug prop changes
-    useEffect(() => {
+    // Derived display values from the jug prop (always in sync)
+    const displayFreqDays = (() => {
         const match = jug.frequency?.match(/^(\d+)/);
-        setFreqDays(match ? match[1] : '');
-        setFreqEnabled(jug.frequency && jug.frequency !== '-');
-    }, [jug.frequency]);
+        return match ? match[1] : '';
+    })();
+    const displayFreqEnabled = jug.frequency && jug.frequency !== '-';
+
+    // Local state used only while the popover is open
+    const [editFreqDays, setEditFreqDays] = useState(displayFreqDays);
+    const [editFreqEnabled, setEditFreqEnabled] = useState(displayFreqEnabled);
+
+    // Keep local editing state synced when the underlying jug data changes
+    useEffect(() => {
+        setEditFreqDays(displayFreqDays);
+        setEditFreqEnabled(displayFreqEnabled);
+    }, [displayFreqDays, displayFreqEnabled]);
 
     // Close menus on outside click
     useEffect(() => {
@@ -55,8 +55,8 @@ const JugCard = ({ jug, dark, theme, onToggleStatus, onUpdateFreq }) => {
 
     // ── Frequency popover save ────────────────────────────────────────────
     const handleFreqSave = () => {
-        const days = parseInt(freqDays, 10);
-        if (!freqEnabled) {
+        const days = parseInt(editFreqDays, 10);
+        if (!editFreqEnabled) {
             onUpdateFreq?.(jug, 0, false);
         } else if (!isNaN(days) && days > 0) {
             onUpdateFreq?.(jug, days, true);
@@ -64,8 +64,8 @@ const JugCard = ({ jug, dark, theme, onToggleStatus, onUpdateFreq }) => {
         setFreqOpen(false);
     };
 
-    const freqLabel = freqEnabled && freqDays
-        ? `Every ${freqDays} day${parseInt(freqDays) === 1 ? '' : 's'}`
+    const freqLabel = displayFreqEnabled && displayFreqDays
+        ? `Every ${displayFreqDays} day${parseInt(displayFreqDays) === 1 ? '' : 's'}`
         : 'No schedule';
 
     return (
@@ -93,7 +93,18 @@ const JugCard = ({ jug, dark, theme, onToggleStatus, onUpdateFreq }) => {
 
             {/* Info */}
             <div className="flex-1 min-w-0">
-                <div className={`font-bold font-mono text-sm ${text}`}>{jug.id}</div>
+                {/* Name – label or fallback to unique ID */}
+                <div className="flex flex-col gap-0.5">
+                    <div className={`font-bold font-mono text-sm ${text}`}>
+                        {jug.label || jug.id}
+                    </div>
+                    {/* Show unique ID as tiny subtitle only if a custom label exists */}
+                    {jug.label && (
+                        <div className={`text-xs font-mono ${muted}`}>
+                            {jug.id}
+                        </div>
+                    )}
+                </div>
                 <div className={`text-xs mt-0.5 ${muted}`}>{jug.type} • Last refill: {jug.lastRefill}</div>
                 <div className={`text-xs mt-0.5 ${muted}`}>Next refill: {jug.nextRefill}</div>
             </div>
@@ -111,10 +122,10 @@ const JugCard = ({ jug, dark, theme, onToggleStatus, onUpdateFreq }) => {
                             }`}
                     >
                         <div className={`text-xs ${muted} text-left`}>Frequency</div>
-                        <div className={`text-sm font-semibold flex items-center gap-1.5 mt-0.5 ${freqEnabled ? text : muted}`}>
+                        <div className={`text-sm font-semibold flex items-center gap-1.5 mt-0.5 ${displayFreqEnabled ? text : muted}`}>
                             <Icon
                                 path={IC.clock}
-                                className={`w-3.5 h-3.5 flex-shrink-0 ${freqEnabled ? 'text-blue-500' : muted}`}
+                                className={`w-3.5 h-3.5 flex-shrink-0 ${displayFreqEnabled ? 'text-blue-500' : muted}`}
                             />
                             {freqLabel}
                         </div>
@@ -130,39 +141,45 @@ const JugCard = ({ jug, dark, theme, onToggleStatus, onUpdateFreq }) => {
                                 Refill Schedule
                             </div>
 
-                            {/* Days input */}
+                            {/* Days input (using local editing state) */}
                             <div className="mb-3">
                                 <label className={`block text-xs mb-1.5 ${muted}`}>Days before refill</label>
                                 <input
                                     type="number"
                                     min="1"
                                     max="365"
-                                    value={freqDays}
-                                    onChange={e => setFreqDays(e.target.value.replace(/\D/g, ''))}
+                                    value={editFreqDays}
+                                    onChange={e => setEditFreqDays(e.target.value.replace(/\D/g, ''))}
                                     placeholder="e.g. 14"
                                     className={`w-full px-3 py-2 rounded-xl border text-sm font-mono font-bold outline-none transition-colors ${inp}`}
                                 />
                             </div>
 
-                            {/* Enable / disable toggle */}
+                            {/* Enable / disable toggle (local state) */}
                             <div className={`flex items-center justify-between py-2.5 px-3 rounded-xl border mb-3 ${D ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-50'}`}>
                                 <span className={`text-xs font-semibold ${text}`}>Schedule active</span>
-                                <button
-                                    onClick={() => setFreqEnabled(v => !v)}
-                                    className={`relative w-10 h-5 rounded-full transition-colors ${freqEnabled ? 'bg-blue-500' : D ? 'bg-slate-700' : 'bg-slate-300'}`}
-                                >
-                                    <span
-                                        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${freqEnabled ? 'translate-x-5' : 'translate-x-0.5'}`}
+                                <label className="relative flex items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={editFreqEnabled}
+                                        onChange={(e) => setEditFreqEnabled(e.target.checked)}
+                                        className="sr-only peer"
                                     />
-                                </button>
+                                    <div className="w-5 h-5 border-2 rounded-md border-slate-400 dark:border-slate-500 peer-checked:bg-blue-600 peer-checked:border-blue-600 flex items-center justify-center transition-colors">
+                                        {editFreqEnabled && (
+                                            <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                </label>
                             </div>
 
                             <button
                                 onClick={handleFreqSave}
-                                disabled={freqEnabled && (!freqDays || parseInt(freqDays) < 1)}
-                                className={`w-full py-2 rounded-xl text-sm font-bold transition-all ${freqEnabled && (!freqDays || parseInt(freqDays) < 1)
-                                    ? D ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                disabled={editFreqEnabled && (!editFreqDays || parseInt(editFreqDays) < 1)}
+                                className={`w-full py-2 rounded-xl text-sm font-bold transition-all ${editFreqEnabled && (!editFreqDays || parseInt(editFreqDays) < 1)
+                                    ? D ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'    : 'bg-blue-600 hover:bg-blue-700 text-white'
                                     }`}
                             >
                                 Save

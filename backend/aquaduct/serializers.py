@@ -2,7 +2,6 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 from django.utils import timezone
-# pyrefly: ignore [missing-import]
 from .models import (
     User, Address, ProfileChangeLog,
     JugType, Jug, RefillSchedule, Order, OrderItem,
@@ -16,12 +15,13 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'username', 'email', 'name', 'phone_number', 'role']
         read_only_fields = ['role']
-    
+
     def validate_phone_number(self, value):
         user = self.instance
         if user and user.role == 'Customer' and not value:
             raise serializers.ValidationError("Phone number is required for customers.")
         return value
+
 
 class RegisterSerializer(serializers.Serializer):
     """Serializer for user registration"""
@@ -94,6 +94,7 @@ class RegisterSerializer(serializers.Serializer):
                 )
         return super().update(instance, validated_data)
 
+
 class AddressSerializer(serializers.ModelSerializer):
     class Meta:
         model = Address
@@ -129,12 +130,14 @@ class AddressSerializer(serializers.ModelSerializer):
             )
         return instance
 
+
 # ══════════════════ NEW SERIALIZERS ══════════════════
 
 class ProfileChangeLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProfileChangeLog
         fields = ['id', 'field_name', 'old_value', 'new_value', 'changed_at']
+
 
 # ── JugType ─────────────────────────────────────────────────
 class JugTypeSerializer(serializers.ModelSerializer):
@@ -147,26 +150,6 @@ class JugTypeSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id']
 
-# ── Jug ─────────────────────────────────────────────────────
-class JugSerializer(serializers.ModelSerializer):
-    jug_type_name = serializers.CharField(source='jug_type.type_name', read_only=True)
-    jug_type_image = serializers.ImageField(source='jug_type.image', read_only=True)
-    owner_email = serializers.CharField(source='owner.email', read_only=True)
-
-    class Meta:
-        model = Jug
-        fields = [
-            'id', 'unique_id', 'owner', 'owner_email',
-            'jug_type', 'jug_type_name', 'jug_type_image', 'jug_label',
-            'status', 'last_delivered_at', 'reminder_active', 'refill_schedule',
-            'created_at', 'updated_at',
-        ]
-        read_only_fields = ['id', 'owner', 'created_at', 'updated_at', 'unique_id']
-
-    def create(self, validated_data):
-        import uuid
-        validated_data['unique_id'] = f"JUG-{uuid.uuid4().hex[:8].upper()}"
-        return super().create(validated_data)
 
 # ── RefillSchedule ──────────────────────────────────────────
 class RefillScheduleSerializer(serializers.ModelSerializer):
@@ -192,18 +175,55 @@ class RefillScheduleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Frequency cannot exceed 365 days.")
         return value
 
+
+# ── Jug ─────────────────────────────────────────────────────
+class JugSerializer(serializers.ModelSerializer):
+    jug_type_name = serializers.CharField(source='jug_type.type_name', read_only=True)
+    jug_type_image = serializers.ImageField(source='jug_type.image', read_only=True)
+    owner_email = serializers.CharField(source='owner.email', read_only=True)
+    refill_schedule = RefillScheduleSerializer(read_only=True)
+
+    class Meta:
+        model = Jug
+        fields = [
+            'id', 'unique_id', 'owner', 'owner_email',
+            'jug_type', 'jug_type_name', 'jug_type_image', 'jug_label',
+            'status', 'last_delivered_at', 'reminder_active', 'refill_schedule',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at', 'unique_id']
+
+    def create(self, validated_data):
+        import uuid
+        validated_data['unique_id'] = f"JUG-{uuid.uuid4().hex[:8].upper()}"
+        jug = super().create(validated_data)
+        # Ensure every new jug has a schedule (paused by default)
+        if not hasattr(jug, 'refill_schedule'):
+            RefillSchedule.objects.create(
+                jug=jug,
+                frequency_days=14,
+                next_reminder_at=None,
+                status=RefillSchedule.Status.PAUSED,
+            )
+        return jug
+
+
 # ── Order & OrderItem ───────────────────────────────────────
 class OrderItemSerializer(serializers.ModelSerializer):
     jug_type_name = serializers.CharField(source='jug_type.type_name', read_only=True, allow_null=True)
     jug_label = serializers.CharField(source='jug.jug_label', read_only=True, allow_null=True)
+    generated_jug_label = serializers.CharField(
+        source='generated_jug.jug_label', read_only=True, allow_null=True
+    )
 
     class Meta:
         model = OrderItem
         fields = [
             'id', 'item_type', 'jug_type', 'jug', 'quantity', 'unit_price',
-            'generated_jug', 'jug_type_name', 'jug_label',
+            'generated_jug', 'jug_type_name', 'jug_label', 'generated_jug_label',
         ]
-        read_only_fields = ['id', 'generated_jug', 'jug_type_name']
+        read_only_fields = ['id', 'generated_jug', 'jug_type_name', 'generated_jug_label']
+
 
 class OrderStatusHistorySerializer(serializers.ModelSerializer):
     changed_by_email = serializers.CharField(source='changed_by.email', read_only=True)
@@ -211,6 +231,7 @@ class OrderStatusHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderStatusHistory
         fields = ['id', 'status', 'changed_by', 'changed_by_email', 'changed_at', 'remarks']
+
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
@@ -236,6 +257,7 @@ class OrderSerializer(serializers.ModelSerializer):
 
     def get_status_history(self, obj):
         return OrderStatusHistorySerializer(obj.status_history.all(), many=True).data
+
 
 class OrderCreateSerializer(serializers.Serializer):
     """Used to place a new order (customer side)."""
@@ -290,10 +312,12 @@ class OrderCreateSerializer(serializers.Serializer):
                 })
         return validated_items
 
+
 class OrderStatusUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = ['status']
+
 
 # ── Notification ────────────────────────────────────────────
 class NotificationSerializer(serializers.ModelSerializer):
@@ -301,6 +325,7 @@ class NotificationSerializer(serializers.ModelSerializer):
         model = Notification
         fields = ['id', 'title', 'message', 'notification_type', 'order', 'is_read', 'sent_at']
         read_only_fields = ['id', 'sent_at']
+
 
 # ── AdminAuditLog ───────────────────────────────────────────
 class AdminAuditLogSerializer(serializers.ModelSerializer):
