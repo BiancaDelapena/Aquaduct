@@ -138,7 +138,7 @@ export default function AddJugTypeModal({ isOpen, onClose, onSave, dark, theme }
               <input
                 type="file"
                 name="image"
-                accept="image/*"
+                accept=".png,image/png"
                 onChange={handleChange}
                 className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium outline-none transition-colors ${inp}`}
               />

@@ -52,47 +52,64 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [loggingIn, setLoggingIn] = useState(false);
   const navigate = useNavigate();
 
+  // Check if already authenticated
   useEffect(() => {
     API.get('profile/')
       .then(res => {
-        if (res.data.role === 'Admin') navigate('/admin-dashboard', { replace: true });
-        else navigate('/dashboard', { replace: true });
+        if (res.data.role === 'Admin')
+          navigate('/admin-dashboard', { replace: true });
+        else
+          navigate('/dashboard', { replace: true });
       })
       .catch(() => {
+        // Not logged in – safe to show the form
+      })
+      .finally(() => {
+        setCheckingAuth(false);
       });
   }, [navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setLoggingIn(true);
     try {
-      // 1. Using the centralized API client as intended for Phase 1 Authentication
       const res = await API.post("token/", {
         username: email,
         password: password,
       });
 
-      // Determine role from backend response. Some backends use boolean flags for staff.
       const roleFromResponse = res.data.role;
 
-      // Role-Based Redirection
       if (roleFromResponse === "Customer") {
-        navigate("/dashboard");
+        navigate("/dashboard", { replace: true });
       } else if (roleFromResponse === "Admin") {
-        navigate("/admin-dashboard");
+        navigate("/admin-dashboard", { replace: true });
       } else {
         setError("Invalid dashboard routing role.");
+        setLoggingIn(false);
       }
-
     } catch (err) {
       setError(
         err.response?.data?.detail ||
         "Invalid username or password."
       );
+      setLoggingIn(false);
     }
   };
+
+  // Show spinner while checking auth or logging in
+  if (checkingAuth || loggingIn) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-10 via-blue-30 to-indigo-90 flex items-center justify-center p-6">
@@ -109,10 +126,8 @@ export default function LoginPage() {
                 className="w-full h-full object-contain"
               />
             </div>
-
-            <span className="text-3xl font-extrabold text-blue-900 tracking-tight">
-              Aquaduct
-            </span>
+            <span className="font-gugi text-2xl bg-gradient-to-t from-blue-700 to-cyan-300 
+            bg-clip-text text-transparent">Aquaduct</span>
           </div>
 
           <p className="text-slate-500 text-sm mb-8">
@@ -200,9 +215,13 @@ export default function LoginPage() {
                 />
                 <span className="text-sm text-slate-600">Remember me</span>
               </label>
-              <a href="#" className="text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors">
+              <button 
+                type="button"
+                onClick={() => navigate('/forgot-password')}
+                className="text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors bg-transparent border-none cursor-pointer"
+              >
                 Forgot password?
-              </a>
+              </button>
             </div>
 
             {error && (
@@ -222,6 +241,7 @@ export default function LoginPage() {
           <p className="text-center text-sm text-slate-500 mt-5">
             Don't have an account?{" "}
             <button
+              type="button"
               onClick={() => navigate("/signup")}
               className="font-bold text-blue-600 hover:text-blue-800 transition-colors bg-none border-none cursor-pointer"
             >

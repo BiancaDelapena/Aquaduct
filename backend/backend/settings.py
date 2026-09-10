@@ -11,6 +11,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-eba50hh_o3l)7y==pl(q-fx4sybp)3lz5hf2b116)*l0@+bcs('
 
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 ALLOWED_HOSTS = ['localhost', '127.0.0.1']
@@ -133,6 +134,13 @@ AUTHENTICATION_BACKENDS = [
     'aquaduct.backend.LockoutModelBackend',   # our custom lockout-aware backend
     'django.contrib.auth.backends.ModelBackend',  # fallback
 ]
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 
 from datetime import timedelta
 

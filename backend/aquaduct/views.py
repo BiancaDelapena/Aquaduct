@@ -17,14 +17,16 @@ from datetime import timedelta
 from django.db.models import Count
 from django.db.models.functions import TruncMonth
 from django.http import HttpResponse
+from django.core.mail import send_mail
 import uuid
 import csv
+
 
 # pyrefly: ignore [missing-import]
 from .models import (
     User, Address,
-    JugType, Jug, RefillSchedule, Order, OrderItem,
-    OrderStatusHistory, Notification, AdminAuditLog, ProfileChangeLog
+    JugType, Jug, RefillSchedule, Order, OrderItem, Notification, PasswordResetOTP,
+    OrderStatusHistory, Notification, AdminAuditLog, ProfileChangeLog,
 )
 
 # pyrefly: ignore [missing-import]
@@ -349,20 +351,18 @@ class JugDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_update(self, serializer):
         instance = self.get_object()
-        new_status = self.request.data.get('status')
-        if new_status in ['Inactive', 'Lost', 'Broken']:
-            # Only allow status change if jug has been delivered at least once
-            if not instance.last_delivered_at:
-                raise serializers.ValidationError(
-                    "You can only mark a jug as Inactive, Lost, or Broken after it has been delivered."
-                )
-            # Prevent changing back to Active directly from these? Optional; but allowed.
-        # Toggle Active/Inactive (already handled)
-        if new_status in ['Active', 'Inactive'] and new_status != instance.status:
-            instance.status = new_status
-            instance.save()
-            return Response(JugSerializer(instance).data)
-        return super().perform_update(serializer)
+        old_label = instance.jug_label
+        new_label = self.request.data.get('jug_label', old_label)
+
+        if not old_label and new_label:
+            Notification.objects.create(
+                user=instance.owner,
+                title='Jug Named',
+                message=f'Your new jug has been named "{new_label}" and is now registered to your account.',
+                notification_type=Notification.NotificationType.SYSTEM,
+            )
+
+        super().perform_update(serializer)
 
 class RefillScheduleDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = RefillScheduleSerializer
@@ -538,7 +538,14 @@ class NotificationListView(generics.ListAPIView):
         return Notification.objects.filter(user=self.request.user)
 
     def post(self, request):
+        """Mark all notifications as read."""
         self.get_queryset().update(is_read=True)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ── NEW ──
+    def delete(self, request):
+        """Delete all notifications for the current user."""
+        self.get_queryset().delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 class CustomerConsumptionView(APIView):
@@ -636,6 +643,141 @@ class OrderReportDownloadView(APIView):
         writer.writerow([])
         writer.writerow(['Total Earnings', '', total, ''])
         return response
+
+class CancelOrderView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            order = Order.objects.get(pk=pk)
+        except Order.DoesNotExist:
+            return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Only the customer who owns the order can cancel
+        if order.customer != request.user:
+            return Response({"detail": "You can only cancel your own orders."}, status=status.HTTP_403_FORBIDDEN)
+
+        if not order.can_be_cancelled():
+            return Response(
+                {"detail": "Only orders with status 'Ordered' can be cancelled."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        old_status = order.status
+        order.status = Order.Status.CANCELLED
+        order.save(update_fields=['status'])
+
+        # Record status change
+        OrderStatusHistory.objects.create(
+            order=order,
+            status=Order.Status.CANCELLED,
+            changed_by=request.user,
+            remarks="Cancelled by customer"
+        )
+
+        return Response({
+            "detail": f"Order #{order.id} has been cancelled.",
+            "order_id": order.id,
+            "status": order.status,
+        })
+
+# ═══════════════ FORGOT PASSWORD (OTP) ═══════════════
+
+class RequestOTPView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        if not email:
+            return Response({'error': 'Email is required.'}, status=400)
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({'message': 'If that email is registered, an OTP has been sent.'})
+
+        # Invalidate old OTPs
+        PasswordResetOTP.objects.filter(user=user, is_used=False).update(is_used=True)
+
+        otp = PasswordResetOTP.objects.create(
+            user=user,
+            otp=PasswordResetOTP.generate_otp(),
+        )
+
+        send_mail(
+            'Aquaduct - Password Reset OTP',
+            f'Your OTP is: {otp.otp}\nIt expires in 10 minutes.',
+            settings.EMAIL_HOST_USER,
+            [email],
+            fail_silently=False,
+        )
+
+        return Response({'message': 'If that email is registered, an OTP has been sent.'})
+
+
+class VerifyOTPView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        otp = request.data.get('otp', '').strip()
+
+        if not email or not otp:
+            return Response({'error': 'Email and OTP are required.'}, status=400)
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({'error': 'Invalid request.'}, status=400)
+
+        ten_min_ago = timezone.now() - timedelta(minutes=10)
+        otp_obj = PasswordResetOTP.objects.filter(
+            user=user,
+            otp=otp,
+            is_used=False,
+            created_at__gte=ten_min_ago
+        ).first()
+
+        if not otp_obj:
+            return Response({'error': 'Invalid or expired OTP.'}, status=400)
+
+        otp_obj.is_used = True
+        otp_obj.save(update_fields=['is_used'])
+
+        return Response({'message': 'OTP verified.', 'email': email})
+
+
+class ResetPasswordView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        otp = request.data.get('otp', '').strip()
+        new_password = request.data.get('password', '')
+
+        if not email or not otp or not new_password:
+            return Response({'error': 'Email, OTP, and new password are required.'}, status=400)
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({'error': 'Invalid request.'}, status=400)
+
+        ten_min_ago = timezone.now() - timedelta(minutes=10)
+        otp_obj = PasswordResetOTP.objects.filter(
+            user=user,
+            otp=otp,
+            is_used=True,
+            created_at__gte=ten_min_ago
+        ).first()
+
+        if not otp_obj:
+            return Response({'error': 'OTP verification required or expired.'}, status=400)
+
+        user.set_password(new_password)
+        user.save()
+
+        return Response({'message': 'Password has been reset successfully.'})
 
 # ═══════════════ LOCKOUT HELPERS ═══════════════
 LOCKOUT_THRESHOLDS = {

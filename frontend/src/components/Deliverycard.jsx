@@ -1,12 +1,13 @@
 // components/DeliveryCard.jsx
 import { MapPin, Phone, Package, CheckCircle } from 'lucide-react';
+import Icon, { IC } from './MyIcons';
 
 const DELIVERY_STATUSES = [
-  { label: 'Order Placed', value: 'Ordered' },
+  { label: 'Order Placed',    value: 'Ordered' },
   { label: 'To Be Picked Up', value: 'To Be Picked Up' },
-  { label: 'Refilling', value: 'Refilling' },
-  { label: 'On The Way', value: 'On The Way' },
-  { label: 'Delivered', value: 'Delivered' },
+  { label: 'Refilling',       value: 'Refilling' },
+  { label: 'On The Way',      value: 'On The Way' },
+  { label: 'Delivered',       value: 'Delivered' },
 ];
 
 export function DeliveryCard({ order, onStatusUpdate, onComplete, dark }) {
@@ -17,6 +18,15 @@ export function DeliveryCard({ order, onStatusUpdate, onComplete, dark }) {
   const muted = D ? 'text-slate-400' : 'text-slate-500';
   const stepperBg = D ? 'bg-slate-800' : 'bg-slate-50';
 
+  // Build a nice label for the first item – show jug name / type
+  const firstItem = order.items?.[0];
+  const primaryLabel = firstItem
+    ? firstItem.item_type === 'Refill'
+      ? firstItem.jug_label || firstItem.jug?.unique_id || '—'
+      : firstItem.generated_jug_label || firstItem.jug_type?.type_name || firstItem.jug_type_name || '—'
+    : '—';
+
+  // Full item summary for the details section
   const itemSummary = order.items?.map(i => {
     if (i.item_type === 'Refill') {
       return `Refill (${i.jug_label || i.jug?.unique_id || '—'})`;
@@ -26,39 +36,23 @@ export function DeliveryCard({ order, onStatusUpdate, onComplete, dark }) {
 
   return (
     <div className={`p-6 rounded-xl border shadow-sm ${cardBg}`}>
-      {/* Header */}
+      {/* ── Header: Order ID + Jug Name ── */}
       <div className="flex items-start justify-between mb-4">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className={`text-lg font-bold font-mono ${text}`}>
-              #{order.id}
-            </span>
-            <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
-              {order.items?.[0]?.item_type ?? 'Order'}
-            </span>
-          </div>
-          <div className="space-y-0.5">
-            <div className={`text-sm ${muted}`}>
-              ETA:{' '}
-              {order.estimated_arrival
-                ? new Date(order.estimated_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                : '—'}
-            </div>
-            <div className={`text-sm ${muted}`}>
-              Placed:{' '}
-              {order.created_at
-                ? new Date(order.created_at).toLocaleString()
-                : '—'}
-            </div>
-          </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-lg font-bold font-mono ${text}`}>
+            #{order.id}
+          </span>
+          <span className={`text-sm font-semibold ${muted}`}>
+            {primaryLabel}
+          </span>
         </div>
         <div className="text-2xl font-black text-blue-600">
           ₱{order.price_snapshot}
         </div>
       </div>
 
-      {/* Details */}
-      <div className="space-y-3 mb-4">
+      {/* ── Customer / Address / Phone ── */}
+      <div className="space-y-2 mb-4">
         <div className="flex items-start gap-3">
           <MapPin className={`w-5 h-5 mt-0.5 ${muted}`} />
           <div>
@@ -85,7 +79,27 @@ export function DeliveryCard({ order, onStatusUpdate, onComplete, dark }) {
         </div>
       </div>
 
-      {/* Status Stepper */}
+      {/* ── ETA & Placed ── */}
+      <div className="flex items-center gap-6 mb-4 text-sm">
+        <div>
+          <span className={muted}>ETA: </span>
+          <span className={`font-semibold ${D ? 'text-amber-400' : 'text-amber-600'}`}>
+            {order.estimated_arrival
+              ? new Date(order.estimated_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : '—'}
+          </span>
+        </div>
+        <div>
+          <span className={muted}>Placed: </span>
+          <span className={muted}>
+            {order.created_at
+              ? new Date(order.created_at).toLocaleString()
+              : '—'}
+          </span>
+        </div>
+      </div>
+
+      {/* ── Status Stepper ── */}
       <div className={`mb-4 p-3 rounded-lg ${stepperBg}`}>
         <div className={`text-xs mb-2 ${muted}`}>Update Delivery Status</div>
         <div className="flex flex-wrap gap-2">
@@ -107,7 +121,7 @@ export function DeliveryCard({ order, onStatusUpdate, onComplete, dark }) {
         </div>
       </div>
 
-      {/* Actions – only the "Mark as Delivered" button remains */}
+      {/* ── Mark as Delivered ── */}
       {onComplete && (
         <div className="flex justify-end">
           <button

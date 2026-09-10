@@ -5,6 +5,7 @@ import API from './api';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/SignupPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import CustomerPage from './pages/CustomerPage';
 import { AdminDashboard } from './pages/AdminPage';
 import NotFound from "./pages/NotFound";
@@ -41,6 +42,8 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
       {/* Protected Admin Route */}
       <Route

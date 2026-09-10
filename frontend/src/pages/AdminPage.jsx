@@ -568,7 +568,7 @@ export function AdminDashboard() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className={`py-12 text-center text-sm ${muted}`}>Loading…</td>
+                  <td colSpan={8} className={`py-12 text-center text-sm ${muted}`}>Loading…</td>
                 </tr>
               ) : orders
                 .filter(o =>
@@ -678,18 +678,7 @@ export function AdminDashboard() {
   };
 
   const renderJugs = () => (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {jugStatusData.map((s) => (
-          <div key={s.name} className={`p-6 rounded-xl border shadow-sm ${card}`}>
-            <div className="flex items-center justify-between mb-2">
-              <span className={`text-sm ${muted}`}>{s.name} Jugs</span>
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }} />
-            </div>
-            <div className={`text-3xl font-black ${text}`}>{s.value}</div>
-          </div>
-        ))}
-      </div>
+    <div className="space-y-2">
 
       {/* Jug Types Section */}
       <div className={`p-6 rounded-xl border shadow-sm ${card}`}>
@@ -875,7 +864,7 @@ export function AdminDashboard() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={5} className={`py-12 text-center text-sm ${muted}`}>Loading…</td></tr>
+                  <tr><td colSpan={8} className={`py-12 text-center text-sm ${muted}`}>Loading…</td></tr>
                 ) : filtered.length > 0 ? filtered.map((log) => (
                   <tr key={log.id} className={`border-b ${rowBorder} ${rowHov}`}>
                     <td className={`py-3 px-4 text-sm whitespace-nowrap ${muted}`}>

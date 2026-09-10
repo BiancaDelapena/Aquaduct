@@ -2,6 +2,7 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 from django.utils import timezone
+from django.core.validators import FileExtensionValidator
 from .models import (
     User, Address, ProfileChangeLog,
     JugType, Jug, RefillSchedule, Order, OrderItem,
@@ -140,7 +141,12 @@ class ProfileChangeLogSerializer(serializers.ModelSerializer):
 
 
 # ── JugType ─────────────────────────────────────────────────
+
 class JugTypeSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(
+        required=False,
+        validators=[FileExtensionValidator(allowed_extensions=['png'])]
+    )
     class Meta:
         model = JugType
         fields = [

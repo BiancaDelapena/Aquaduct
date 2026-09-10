@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from datetime import timedelta
+import random, string
 
 class User(AbstractUser):
     class Role(models.TextChoices):
@@ -44,6 +45,19 @@ class TimeStampedModel(models.Model):
 
     class Meta:
         abstract = True
+
+class PasswordResetOTP(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    otp = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_used = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"OTP for {self.user.email}"
+
+    @staticmethod
+    def generate_otp():
+        return ''.join(random.choices(string.digits, k=6))
 
 class Address(TimeStampedModel):
     class AddressType(models.TextChoices):
@@ -269,7 +283,6 @@ class ProfileChangeLog(models.Model):
     def __str__(self):
         return f"{self.user.email} changed {self.field_name} at {self.changed_at}"
 
-
 class AdminAuditLog(models.Model):
     class Action(models.TextChoices):
         ORDER_STATUS_CHANGED = "Order Status Changed", "Order Status Changed"
@@ -310,3 +323,24 @@ class AdminAuditLog(models.Model):
     def __str__(self):
         admin_name = self.admin_user.email if self.admin_user else "System"
         return f"{admin_name} - {self.get_action_display()} (ID: {self.resource_id}) at {self.timestamp}"
+
+class ChatSession(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='chat_sessions')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+class ChatMessage(models.Model):
+    class Role(models.TextChoices):
+        USER = 'user'
+        ASSISTANT = 'assistant'
+        TOOL = 'tool'
+
+    session = models.ForeignKey(ChatSession, on_delete=models.CASCADE, related_name='messages')
+    role = models.CharField(max_length=10, choices=Role.choices)
+    content = models.TextField(blank=True, null=True)
+    tool_name = models.CharField(max_length=50, blank=True, null=True)
+    tool_args = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']

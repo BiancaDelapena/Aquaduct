@@ -6,8 +6,11 @@ from .views import (
     AddressListCreateView, AddressDetailView, JugTypeListCreateView, JugTypeDetailView, JugListCreateView,
     JugDetailView, RefillScheduleDetailView, OrderListCreateView, OrderDetailView, OrderStatusUpdateView,
     OrderETAUpdateView, NotificationListView, CustomerConsumptionView, AdminAuditLogListView, 
-    UserProfileChangeLogView, OrderReportDownloadView,
+    UserProfileChangeLogView, OrderReportDownloadView,  CancelOrderView, 
+    RequestOTPView, VerifyOTPView, ResetPasswordView,
 )
+
+from .chat_view import ChatView
 
 urlpatterns = [
     # Auth & Profile (existing)
@@ -17,6 +20,9 @@ urlpatterns = [
     path('addresses/', AddressListCreateView.as_view(), name='address-list'),
     path('addresses/<int:pk>/', AddressDetailView.as_view(), name='address-detail'),
     path('token/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
+    path('password-reset/request-otp/', RequestOTPView.as_view(), name='request-otp'),
+    path('password-reset/verify-otp/', VerifyOTPView.as_view(), name='verify-otp'),
+    path('password-reset/reset/', ResetPasswordView.as_view(), name='reset-password'),
 
     # Jug Types (Admin)
     path('jug-types/', JugTypeListCreateView.as_view(), name='jugtype-list'),
@@ -35,6 +41,7 @@ urlpatterns = [
     path('orders/<int:pk>/', OrderDetailView.as_view(), name='order-detail'),
     path('orders/<int:pk>/status/', OrderStatusUpdateView.as_view(), name='order-status-update'),
     path('orders/<int:pk>/eta/', OrderETAUpdateView.as_view(), name='order-eta-update'),
+    path('orders/<int:pk>/cancel/', CancelOrderView.as_view(), name='order-cancel'),
 
     # Notifications
     path('notifications/', NotificationListView.as_view(), name='notification-list'),
@@ -46,4 +53,6 @@ urlpatterns = [
     path('profile/history/', UserProfileChangeLogView.as_view(), name='profile-change-log'),
     path('logout/', LogoutView.as_view(), name='logout'),
     path('token/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
+
+    path('chat/', ChatView.as_view(), name='chat'),
 ]

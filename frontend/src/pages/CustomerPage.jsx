@@ -9,11 +9,11 @@ import Icon, { IC } from '../components/MyIcons';
 import StatusBadge from '../components/StatusBadge';
 import Modal from '../components/Modal';
 import JugCard from '../components/JugCard';
-import ChatWidget from '../components/Chatwidget';
 import AddAddressModal from '../components/AddAddressModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EditProfileModal from '../components/EditProfileModal';
 import NotificationsPopover from '../components/NotificationsPopover';
+import ChatbotTab from '../components/ChatbotTab';
 import logo from '../assets/logoaqud.png';
 import { AlertCircle } from 'lucide-react';
 
@@ -23,7 +23,6 @@ export default function CustomerPage() {
   const [dark, setDark] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [jugs, setJugs] = useState([]);
-  const [showChatbot, setShowChatbot] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   const [profile, setProfile] = useState(null);
@@ -286,7 +285,7 @@ export default function CustomerPage() {
   const NAV_TABS = [
     { id: 'dashboard', label: 'Dashboard', icon: IC.droplet },
     { id: 'orders', label: 'Orders', icon: IC.truck },
-    { id: 'inventory', label: 'Inventory', icon: IC.package },
+    { id: 'support', label: 'Support', icon: IC.chat },
     { id: 'profile', label: 'Profile', icon: IC.user },
   ];
 
@@ -333,8 +332,8 @@ export default function CustomerPage() {
             </div>
             <div className="relative flex items-start justify-between gap-4">
               <div>
-                <div className="mb-1 inline-flex p-2.5 bg-white/15 rounded-xl">
-                  <img src={refillIcon} alt="Refill" className="w-8 h-8 object-contain" />
+                <div className="mb-1 inline-flex p-0.7 bg-white/15 rounded-xl">
+                  <img src={refillIcon} alt="Refill" className="w-14 h-14 object-contain" />
                 </div>
                 <div className="font-bold text-base sm:text-lg mt-2">Request Refill</div>
                 <div className="text-blue-200 text-xs sm:text-sm mt-0.5">Schedule a swift refill delivery</div>
@@ -347,17 +346,17 @@ export default function CustomerPage() {
             className={`group relative overflow-hidden p-5 sm:p-6 rounded-2xl border transition-all duration-200 text-left ${card}`}
           >
             <div className="water-wave absolute inset-0 bg-blue-400/20 pointer-events-none">
-              <svg className="wave-svg wave-layer-1" viewBox="0 0 1440 60" preserveAspectRatio="none" style={{ height: 28 }}>
-                <path fill="rgba(59,130,246,0.2)" d="M0,30 C360,60 1080,0 1440,30 L1440,60 L0,60 Z" />
+              <svg className="wave-svg wave-layer-1" viewBox="0 0 1440 60" preserveAspectRatio="none" style={{ height: 33 }}>
+                <path fill="rgba(59,130,246,0.2)" d="M0,40 C200,80 400,0 600,45 C800,90 1000,10 1200,50 C1300,65 1380,30 1440,40 L1440,80 L0,80 Z" />
               </svg>
-              <svg className="wave-svg wave-layer-2" viewBox="0 0 1440 60" preserveAspectRatio="none" style={{ height: 28, top: -14, opacity: 0.5 }}>
-                <path fill="rgba(59,130,246,0.15)" d="M0,20 C480,55 960,0 1440,35 L1440,60 L0,60 Z" />
+              <svg className="wave-svg wave-layer-2" viewBox="0 0 1440 60" preserveAspectRatio="none" style={{ height: 37, top: -17, opacity: 0.5 }}>
+                <path fill="rgba(59,130,246,0.15)" d="M0,20 C150,60 350,5 550,55 C750,90 950,15 1150,45 C1300,65 1400,25 1440,30 L1440,80 L0,80 Z" />
               </svg>
             </div>
             <div className="relative flex items-start justify-between gap-4">
               <div>
-                <div className={`mb-1 inline-flex p-2.5 rounded-xl ${D ? 'bg-blue-900/50' : 'bg-blue-50'}`}>
-                  <img src={newJugIcon} alt="New Jug" className="w-8 h-8 object-contain" />
+                <div className={`mb-1 inline-flex p-0.7 rounded-xl ${D ? 'bg-blue-900/20' : 'bg-blue-30'}`}>
+                  <img src={newJugIcon} alt="New Jug" className="w-14 h-14 object-contain" />
                 </div>
                 <div className={`font-bold text-base sm:text-lg mt-2 ${text}`}>New Container</div>
                 <div className={`text-xs sm:text-sm mt-0.5 ${muted}`}>Purchase an additional water jug</div>
@@ -492,8 +491,8 @@ export default function CustomerPage() {
           )}
         </div>
 
-        {/* Chart + live deliveries */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Chart */}
+        <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
           <div className={`lg:col-span-2 rounded-2xl border p-6 ${card}`}>
             <div className="mb-5">
               <div className={`font-bold ${text}`}>Consumption History</div>
@@ -523,53 +522,7 @@ export default function CustomerPage() {
               </div>
             )}
           </div>
-
-          <div className={`rounded-2xl border p-6 ${card} space-y-4`}>
-            <div className={`font-bold ${text}`}>Live Deliveries</div>
-            {orders.filter(o => o.status === 'On The Way').length === 0 ? (
-              <div className={`text-sm ${muted}`}>No active deliveries.</div>
-            ) : (
-              orders.filter(o => o.status === 'On The Way').map(o => (
-                <div key={o.id} className={`p-3 rounded-xl border ${D ? 'bg-amber-900/20 border-amber-700/40' : 'bg-amber-50 border-amber-200'}`}>
-                  <div className={`text-sm font-bold ${D ? 'text-amber-300' : 'text-amber-800'}`}>{o.id}</div>
-                  <div className={`text-xs mt-0.5 ${D ? 'text-amber-400' : 'text-amber-600'}`}>
-                    {o.items?.[0]?.item_type || 'Order'}
-                  </div>
-                  <div className={`text-xs mt-1 font-medium ${D ? 'text-amber-300' : 'text-amber-700'}`}>
-                    ETA {o.estimated_arrival ? new Date(o.estimated_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
-                  </div>
-                </div>
-              ))
-            )}
-            <div className={`pt-3 border-t ${border}`}>
-              <div className={`text-xs font-semibold uppercase tracking-wider mb-2 ${muted}`}>Default Address</div>
-              <div className="flex gap-2 items-start">
-                <Icon path={IC.map} className={`w-4 h-4 mt-0.5 flex-shrink-0 ${muted}`} />
-                <p className={`text-xs leading-snug ${muted}`}>{addresses.find(a => a.is_default)?.full_address}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: 'Active Jugs', val: jugs.filter(j => j.status === 'Active').length, color: 'text-emerald-500', bg: D ? 'bg-emerald-900/30' : 'bg-emerald-50', icon: IC.droplet },
-            { label: 'In Transit', val: orders.filter(o => o.status === 'On The Way').length, color: 'text-blue-500', bg: D ? 'bg-blue-900/30' : 'bg-blue-50', icon: IC.truck },
-            { label: 'Next Refill', val: nextRefillText || '—', color: 'text-amber-500', bg: D ? 'bg-amber-900/30' : 'bg-amber-50', icon: IC.clock },
-            { label: 'Orders (Jun)', val: orders.length, color: 'text-purple-500', bg: D ? 'bg-purple-900/30' : 'bg-purple-50', icon: IC.package },
-          ].map(s => (
-            <div key={s.label} className={`rounded-2xl border p-4 ${card}`}>
-              <div className="flex items-center justify-between mb-3">
-                <span className={`text-xs font-semibold ${muted}`}>{s.label}</span>
-                <div className={`p-1.5 rounded-lg ${s.bg}`}>
-                  <Icon path={s.icon} className={`w-3.5 h-3.5 ${s.color}`} />
-                </div>
-              </div>
-              <div className={`text-2xl font-black ${s.color}`}>{s.val}</div>
-            </div>
-          ))}
-        </div>
+        </div>  
       </div>
     );
   };
@@ -594,7 +547,7 @@ export default function CustomerPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className={`text-xs font-semibold uppercase tracking-wider border-b ${D ? 'border-slate-800 text-slate-500' : 'border-slate-100 text-slate-400'}`}>
-                    {['Order ID', 'Jug', 'Type', 'ETA', 'Arrived', 'Amount', 'Status'].map(h => (
+                    {['Order ID', 'Jug', 'Type', 'ETA', 'Arrived', 'Amount', 'Status', 'Actions'].map(h => (
                       <th key={h} className="text-left py-3 px-4 whitespace-nowrap font-semibold">{h}</th>
                     ))}
                   </tr>
@@ -624,6 +577,30 @@ export default function CustomerPage() {
                       </td>
                       <td className={`py-3.5 px-4 text-xs font-bold ${text}`}>₱{o.price_snapshot}</td>
                       <td className="py-3.5 px-4"><StatusBadge status={o.status} dark={D} /></td>
+                      <td className="py-3.5 px-4">
+                        <button
+                            onClick={async () => {
+                                if (!window.confirm(`Are you sure you want to cancel order #${o.id}?`)) return;
+                                try {
+                                    await API.post(`orders/${o.id}/cancel/`);
+                                    const res = await API.get('orders/');
+                                    setOrders(res.data);
+                                } catch (err) {
+                                    const msg = err.response?.data?.detail || 'Failed to cancel order.';
+                                    showError(msg);
+                                }
+                            }}
+                            disabled={o.status !== 'Ordered'}
+                            className={`text-xs px-2 py-1 rounded-md font-semibold transition-colors ${
+                                o.status === 'Ordered'
+                                    ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                            }`}
+                            title={o.status === 'Ordered' ? 'Cancel this order' : 'Can only cancel orders with status Ordered'}
+                        >
+                            Cancel
+                        </button>
+                    </td>
                     </tr>
                   ))}
                 </tbody>
@@ -633,67 +610,7 @@ export default function CustomerPage() {
         ))}
       </div>
     );
-  };
-
-  // ── INVENTORY ──────────────────────────────────────────────────────────────
-  const renderInventory = () => {
-    const activeJugs = jugs.filter(j => j.status?.toUpperCase() === 'ACTIVE');
-    const inactiveJugs = jugs.filter(j => j.status?.toUpperCase() !== 'ACTIVE');
-
-    const JugSection = ({ title, items, isEmpty }) => (
-      <div className={`rounded-2xl border overflow-visible ${card}`}>
-        <div className={`px-6 py-4 border-b flex items-center justify-between ${border}`}>
-          <div className="flex items-center gap-2.5">
-            <span
-              className={`w-2 h-2 rounded-full ${title === 'Active Jugs'
-                ? 'bg-emerald-500'
-                : D ? 'bg-slate-600' : 'bg-slate-400'
-                }`}
-            />
-            <span className={`font-bold ${text}`}>{title}</span>
-            <span
-              className={`text-xs px-2 py-0.5 rounded-full font-semibold ${title === 'Active Jugs'
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                : D ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'
-                }`}
-            >
-              {items.length}
-            </span>
-          </div>
-        </div>
-
-        {isEmpty || items.length === 0 ? (
-          <div className={`px-6 py-8 text-sm text-center ${muted}`}>
-            No {title.toLowerCase()} right now.
-          </div>
-        ) : (
-          <div className={`divide-y ${D ? 'divide-slate-800' : 'divide-slate-100'}`}>
-            {items.map(jug => (
-              <JugCard
-                key={jug.id}
-                jug={jug}
-                dark={dark}
-                theme={theme}
-                onToggleStatus={toggleJugStatus}
-                onUpdateFreq={handleFreqUpdate}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-
-    return (
-      <div className="space-y-5">
-        <div className="px-1">
-          <div className={`font-bold text-lg ${text}`}>Registered Water Jugs</div>
-          <div className={`text-sm mt-0.5 ${muted}`}>Manage containers assigned to your profile</div>
-        </div>
-        <JugSection title="Active Jugs" items={activeJugs} />
-        <JugSection title="Inactive Jugs" items={inactiveJugs} isEmpty={inactiveJugs.length === 0} />
-      </div>
-    );
-  };
+  }
 
   const handleLogout = async () => {
     await API.post('logout/');
@@ -702,68 +619,132 @@ export default function CustomerPage() {
 
   // ── PROFILE ────────────────────────────────────────────────────────────────
   const renderProfile = () => (
-    <div className="mx-auto space-y-5 max-w-2xl">
-      <div className={`rounded-2xl border p-6 ${card}`}>
-        <div className="flex items-center justify-between mb-5">
-          <div className={`font-bold ${text}`}>Personal Information</div>
-          <button
-            onClick={() => setShowEditProfileModal(true)}
-            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl transition-colors text-blue-500 ${D ? 'hover:bg-slate-800' : 'hover:bg-blue-50'}`}
-          >
-            <Icon path={IC.edit} className="w-3.5 h-3.5" /> Edit
-          </button>
-        </div>
-        <div className="space-y-4">
-          {[
-            { label: 'Name', val: profile?.name, type: 'text' },
-            { label: 'Email', val: profile?.email, type: 'email' },
-            { label: 'Phone Number', val: profile?.phone_number, type: 'tel' },
-          ].map(f => (
-            <div key={f.label}>
-              <label className={`block text-xs font-semibold uppercase tracking-wider mb-1.5 ${muted}`}>{f.label}</label>
-              <input
-                type={f.type}
-                defaultValue={f.val}
-                readOnly
-                className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium outline-none transition-colors ${inp}`}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className={`rounded-2xl border p-6 ${card}`}>
-        <div className="flex items-center justify-between mb-4">
-          <div className={`font-bold ${text}`}>Delivery Addresses</div>
-          <button
-            onClick={() => { setEditingAddress(null); setShowAddAddressModal(true); }}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-          >
-            <Icon path={IC.plus} className="w-3.5 h-3.5" /> Add
-          </button>
-        </div>
-        <div className="space-y-3">
-          {addresses.map(addr => (
-            <div key={addr.id} className={`flex items-start justify-between gap-3 p-4 rounded-xl border transition-colors ${D ? 'border-slate-800 hover:bg-slate-800/50' : 'border-slate-200 hover:bg-slate-50'}`}>
-              <div className="flex gap-3 items-start">
-                <Icon path={IC.map} className={`w-4 h-4 mt-0.5 flex-shrink-0 ${muted}`} />
-                <div>
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className={`text-sm font-bold ${text}`}>{addr.label}</span>
-                    {addr.is_default && <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">Default</span>}
-                  </div>
-                  <div className={`text-xs leading-snug ${muted}`}>{addr.full_address}</div>
-                </div>
+      <div className="mx-auto space-y-5 max-w-2xl">
+          {/* Personal Information */}
+          <div className={`rounded-2xl border p-6 ${card}`}>
+              <div className="flex items-center justify-between mb-5">
+                  <div className={`font-bold ${text}`}>Personal Information</div>
+                  <button
+                      onClick={() => setShowEditProfileModal(true)}
+                      className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl transition-colors text-blue-500 ${D ? 'hover:bg-slate-800' : 'hover:bg-blue-50'}`}
+                  >
+                      <Icon path={IC.edit} className="w-3.5 h-3.5" /> Edit
+                  </button>
               </div>
-              <button
-                onClick={() => { setEditingAddress(addr); setShowAddAddressModal(true); }}
-                className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors text-blue-500 ${D ? 'hover:bg-slate-700' : 'hover:bg-blue-50'}`}
-              >Edit</button>
-            </div>
-          ))}
-        </div>
+              <div className="space-y-4">
+                  {[
+                      { label: 'Name', val: profile?.name, type: 'text' },
+                      { label: 'Email', val: profile?.email, type: 'email' },
+                      { label: 'Phone Number', val: profile?.phone_number, type: 'tel' },
+                  ].map(f => (
+                      <div key={f.label}>
+                          <label className={`block text-xs font-semibold uppercase tracking-wider mb-1.5 ${muted}`}>{f.label}</label>
+                          <input
+                              type={f.type}
+                              defaultValue={f.val}
+                              readOnly
+                              className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium outline-none transition-colors ${inp}`}
+                          />
+                      </div>
+                  ))}
+              </div>
+          </div>
+
+          {/* Delivery Addresses */}
+          <div className={`rounded-2xl border p-6 ${card}`}>
+              <div className="flex items-center justify-between mb-4">
+                  <div className={`font-bold ${text}`}>Delivery Addresses</div>
+                  <button
+                      onClick={() => { setEditingAddress(null); setShowAddAddressModal(true); }}
+                      className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                  >
+                      <Icon path={IC.plus} className="w-3.5 h-3.5" /> Add
+                  </button>
+              </div>
+              <div className="space-y-3">
+                  {addresses.map(addr => (
+                      <div key={addr.id} className={`flex items-start justify-between gap-3 p-4 rounded-xl border transition-colors ${D ? 'border-slate-800 hover:bg-slate-800/50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                          <div className="flex gap-3 items-start">
+                              <Icon path={IC.map} className={`w-4 h-4 mt-0.5 flex-shrink-0 ${muted}`} />
+                              <div>
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                      <span className={`text-sm font-bold ${text}`}>{addr.label}</span>
+                                      {addr.is_default && <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">Default</span>}
+                                  </div>
+                                  <div className={`text-xs leading-snug ${muted}`}>{addr.full_address}</div>
+                              </div>
+                          </div>
+                          <button
+                              onClick={() => { setEditingAddress(addr); setShowAddAddressModal(true); }}
+                              className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors text-blue-500 ${D ? 'hover:bg-slate-700' : 'hover:bg-blue-50'}`}
+                          >Edit</button>
+                      </div>
+                  ))}
+              </div>
+          </div>
+
+          {/* Registered Water Jugs */}
+          <div className={`rounded-2xl border p-6 ${card}`}>
+              <div className="mb-4">
+                  <div className={`font-bold ${text}`}>INVENTORY</div>
+                  <div className={`text-sm mt-0.5 ${muted}`}>Manage containers you own</div>
+              </div>
+
+              {/* Active Jugs */}
+              <div className="mb-6">
+                  <div className={`flex items-center gap-2.5 mb-3`}>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      <span className={`font-semibold text-sm ${text}`}>Active Jugs</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                          {jugs.filter(j => j.status?.toUpperCase() === 'ACTIVE').length}
+                      </span>
+                  </div>
+                  <div className={`divide-y ${D ? 'divide-slate-800' : 'divide-slate-100'}`}>
+                      {jugs.filter(j => j.status?.toUpperCase() === 'ACTIVE').length === 0 ? (
+                          <div className={`text-sm text-center py-4 ${muted}`}>No active jugs right now.</div>
+                      ) : (
+                          jugs.filter(j => j.status?.toUpperCase() === 'ACTIVE').map(jug => (
+                              <JugCard
+                                  key={jug.id}
+                                  jug={jug}
+                                  dark={dark}
+                                  theme={theme}
+                                  onToggleStatus={toggleJugStatus}
+                                  onUpdateFreq={handleFreqUpdate}
+                              />
+                          ))
+                      )}
+                  </div>
+              </div>
+
+              {/* Inactive Jugs */}
+              <div>
+                  <div className={`flex items-center gap-2.5 mb-3`}>
+                      <span className={`w-2 h-2 rounded-full ${D ? 'bg-slate-600' : 'bg-slate-400'}`} />
+                      <span className={`font-semibold text-sm ${text}`}>Inactive Jugs</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${D ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
+                          {jugs.filter(j => j.status?.toUpperCase() !== 'ACTIVE').length}
+                      </span>
+                  </div>
+                  <div className={`divide-y ${D ? 'divide-slate-800' : 'divide-slate-100'}`}>
+                      {jugs.filter(j => j.status?.toUpperCase() !== 'ACTIVE').length === 0 ? (
+                          <div className={`text-sm text-center py-4 ${muted}`}>No inactive jugs right now.</div>
+                      ) : (
+                          jugs.filter(j => j.status?.toUpperCase() !== 'ACTIVE').map(jug => (
+                              <JugCard
+                                  key={jug.id}
+                                  jug={jug}
+                                  dark={dark}
+                                  theme={theme}
+                                  onToggleStatus={toggleJugStatus}
+                                  onUpdateFreq={handleFreqUpdate}
+                              />
+                          ))
+                      )}
+                  </div>
+              </div>
+          </div>
       </div>
-    </div>
   );
 
   return (
@@ -848,19 +829,12 @@ export default function CustomerPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 pb-24">
         {activeTab === 'dashboard' && renderDashboard()}
         {activeTab === 'orders' && renderOrders()}
-        {activeTab === 'inventory' && renderInventory()}
+        {activeTab === 'support' && <ChatbotTab dark={dark} theme={theme} />}
         {activeTab === 'profile' && renderProfile()}
         {error && (<div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-center gap-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />{error}
         </div>)}
       </main>
-
-      {/* CHATBOT TOGGLE */}
-      <button onClick={() => setShowChatbot(c => !c)}
-        className={`fixed bottom-6 left-6 z-40 p-4 rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 ${D ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-800 hover:bg-slate-900'} text-white`}>
-        <Icon path={IC.chat} className="w-6 h-6" />
-      </button>
-      {showChatbot && <ChatWidget dark={dark} theme={theme} onClose={() => setShowChatbot(false)} />}
 
       {/* MODALS */}
       {/* Refill */}

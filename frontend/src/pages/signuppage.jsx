@@ -178,10 +178,8 @@ export default function RegisterPage() {
                 className="w-full h-full object-contain"
               />
             </div>
-
-            <span className="text-3xl font-extrabold text-blue-900 tracking-tight">
-              Aquaduct
-            </span>
+            <span className="font-gugi text-2xl bg-gradient-to-t from-blue-700 to-cyan-300 
+            bg-clip-text text-transparent">Aquaduct</span>
           </div>
 
           <p className="text-slate-500 text-sm mb-8">

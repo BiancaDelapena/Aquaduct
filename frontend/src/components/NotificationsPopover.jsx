@@ -76,6 +76,21 @@ export default function NotificationsPopover({ dark, theme }) {
                 Mark all read
               </button>
             )}
+            {notifications.length > 0 && (
+            <button
+                onClick={async () => {
+                    try {
+                        await API.delete('notifications/');
+                        setNotifications([]); // clear locally immediately
+                    } catch (err) {
+                        console.error('Failed to clear notifications', err);
+                    }
+                }}
+                className="text-xs font-semibold text-red-500 hover:text-red-600 transition-colors"
+            >
+                Clear all
+            </button>
+        )}
           </div>
 
           <div className="max-h-64 overflow-y-auto">

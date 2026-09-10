@@ -4,7 +4,8 @@ from django.contrib.auth.signals import user_login_failed, user_logged_in, user_
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 # pyrefly: ignore [missing-import]
-from .models import AdminAuditLog, Order, OrderStatusHistory, JugType, User
+from .models import AdminAuditLog, Order, OrderStatusHistory, JugType, User, Notification
+
 
 User = get_user_model()
 
@@ -40,9 +41,10 @@ def serialize_model(obj):
 
 @receiver(post_save, sender=OrderStatusHistory)
 def log_order_status_change(sender, instance, created, **kwargs):
-    """Log when order status changes"""
+    """Log when order status changes and notify the customer."""
     if created:
         order = instance.order
+
         AdminAuditLog.objects.create(
             admin_user=instance.changed_by,
             action=AdminAuditLog.Action.ORDER_STATUS_CHANGED,
@@ -52,6 +54,28 @@ def log_order_status_change(sender, instance, created, **kwargs):
             new_values={'status': instance.status},
             details=f"Order status changed to {instance.status}. {instance.remarks}" if instance.remarks else f"Order status changed to {instance.status}",
         )
+
+        notify_statuses = [
+            Order.Status.TO_BE_PICKED_UP,
+            Order.Status.DELIVERED,
+        ]
+        if instance.status in notify_statuses:
+            customer = order.customer
+            title = f"Order #{order.id} Update"
+            if instance.status == Order.Status.TO_BE_PICKED_UP:
+                message = f"Your order #{order.id} is now 'To Be Picked Up'. Please have your jug ready."
+            elif instance.status == Order.Status.DELIVERED:
+                message = f"Your order #{order.id} has been delivered. Enjoy your water!"
+            else:
+                message = f"Your order #{order.id} status changed to {instance.status}."
+
+            Notification.objects.create(
+                user=customer,
+                title=title,
+                message=message,
+                notification_type=Notification.NotificationType.ORDER_UPDATE,
+                order=order,
+            )
 
 @receiver(post_save, sender=JugType)
 def log_jug_type_change(sender, instance, created, **kwargs):
